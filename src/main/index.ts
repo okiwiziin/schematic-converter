@@ -24,6 +24,7 @@ import {
   type Settings,
 } from "../shared/ipc";
 import { DEFAULT_OPTIONS } from "../shared/types";
+import { Updater } from "./updater";
 
 const THREADS = cpus().length;
 const SETTINGS_PATH = (): string => join(app.getPath("userData"), "settings.json");
@@ -32,6 +33,7 @@ const WORKER_PATH = (): string => join(__dirname, "engine.js");
 let window: BrowserWindow | null = null;
 let settings: Settings = { ...DEFAULT_SETTINGS };
 const jobs = new Map<string, JobState>();
+let updater: Updater;
 
 function send(event: AppEvent): void {
   window?.webContents.send("app-event", event);
@@ -242,7 +244,13 @@ const handle = <A extends unknown[], R>(channel: string, fn: (...args: A) => R |
 };
 
 function registerIpc(): void {
-  handle("get-state", () => ({ jobs: [...jobs.values()], settings, threads: THREADS }));
+  handle("get-state", () => ({
+    jobs: [...jobs.values()],
+    settings,
+    threads: THREADS,
+    version: app.getVersion(),
+    update: updater.state,
+  }));
   handle("blocks-18", () => listBlocks18());
   handle("pick-files", async () => {
     if (!window) return;
@@ -286,6 +294,7 @@ function registerIpc(): void {
       options: { ...settings.options, ...patch.options },
     };
     if (patch.theme) applyTheme();
+    if (patch.autoUpdate !== undefined) updater.setAutomatic(patch.autoUpdate);
     await saveSettings();
     send({ type: "settings", settings });
     void pumpQueue();
@@ -334,6 +343,11 @@ function registerIpc(): void {
       (job) => job.path === path || job.report?.outputs.some((output) => output.path === path),
     );
     if (allowed && existsSync(path)) shell.showItemInFolder(path);
+  });
+  handle("check-updates", () => updater.check(true));
+  handle("install-update", () => {
+    // Installing restarts the app, which would throw away a conversion in progress.
+    if (running.size === 0) updater.install();
   });
   handle("open-output-folder", async () => {
     await mkdir(settings.outputDir, { recursive: true });
@@ -445,8 +459,10 @@ if (!hasLock) {
     await loadSettings();
     applyTheme();
     nativeTheme.on("updated", syncChrome);
+    updater = new Updater((update) => send({ type: "update", update }));
     registerIpc();
     createWindow();
+    updater.setAutomatic(settings.autoUpdate);
     const launchFiles = filesFromArguments(process.argv);
     if (launchFiles.length > 0) {
       window?.webContents.once("did-finish-load", () => void addPaths(launchFiles));

@@ -142,6 +142,135 @@ describe("exact mappings", () => {
   });
 });
 
+// Written from how 1.8's own block classes read their metadata, not from any table.
+describe("orientation follows 1.8's metadata", () => {
+  const TRAPDOOR_FACING: Record<string, number> = { north: 0, south: 1, west: 2, east: 3 };
+
+  it.each([
+    ["oak_trapdoor", 96],
+    ["spruce_trapdoor", 96],
+    ["cherry_trapdoor", 96],
+    ["iron_trapdoor", 167],
+    ["copper_trapdoor", 167],
+  ])("%s keeps its direction, half and open state", (name, id) => {
+    for (const facing of ["north", "south", "west", "east"]) {
+      for (const half of ["bottom", "top"]) {
+        for (const open of ["true", "false"]) {
+          for (const powered of ["true", "false"]) {
+            const text = `minecraft:${name}[facing=${facing},half=${half},open=${open},powered=${powered},waterlogged=false]`;
+            const expected = TRAPDOOR_FACING[facing]! | (open === "true" ? 4 : 0) | (half === "top" ? 8 : 0);
+            expect(state(text), text).toEqual([id, expected]);
+          }
+        }
+      }
+    }
+  });
+
+  it("levers stay on their wall, floor or ceiling, along the right axis", () => {
+    const WALL: Record<string, number> = { east: 1, west: 2, south: 3, north: 4 };
+    const FLOOR: Record<string, number> = { north: 5, south: 5, west: 6, east: 6 };
+    const CEILING: Record<string, number> = { north: 7, south: 7, west: 0, east: 0 };
+    for (const facing of ["north", "south", "west", "east"]) {
+      for (const powered of [false, true]) {
+        const bit = powered ? 8 : 0;
+        expect(state(`minecraft:lever[face=wall,facing=${facing},powered=${powered}]`)).toEqual([69, WALL[facing]! | bit]);
+        expect(state(`minecraft:lever[face=floor,facing=${facing},powered=${powered}]`)).toEqual([69, FLOOR[facing]! | bit]);
+        expect(state(`minecraft:lever[face=ceiling,facing=${facing},powered=${powered}]`)).toEqual([69, CEILING[facing]! | bit]);
+      }
+    }
+  });
+
+  it.each([
+    ["stone_button", 77],
+    ["oak_button", 143],
+    ["birch_button", 143],
+    ["polished_blackstone_button", 77],
+  ])("%s stays on its wall, floor or ceiling and keeps its pressed state", (name, id) => {
+    const WALL: Record<string, number> = { east: 1, west: 2, south: 3, north: 4 };
+    for (const facing of ["north", "south", "west", "east"]) {
+      for (const powered of [false, true]) {
+        const bit = powered ? 8 : 0;
+        expect(state(`minecraft:${name}[face=wall,facing=${facing},powered=${powered}]`)).toEqual([id, WALL[facing]! | bit]);
+        expect(state(`minecraft:${name}[face=floor,facing=${facing},powered=${powered}]`)).toEqual([id, 5 | bit]);
+        expect(state(`minecraft:${name}[face=ceiling,facing=${facing},powered=${powered}]`)).toEqual([id, bit]);
+      }
+    }
+  });
+
+  it("comparators are on when bit 8 is set", () => {
+    const FACING: Record<string, number> = { south: 0, west: 1, north: 2, east: 3 };
+    for (const facing of Object.keys(FACING)) {
+      for (const mode of ["compare", "subtract"]) {
+        for (const powered of [false, true]) {
+          const text = `minecraft:comparator[facing=${facing},mode=${mode},powered=${powered}]`;
+          expect(state(text), text).toEqual([149, FACING[facing]! | (mode === "subtract" ? 4 : 0) | (powered ? 8 : 0)]);
+        }
+      }
+    }
+  });
+});
+
+// Point FLATTENING_TABLE at ViaVersion's mappings/mapping-1.12.json, a dump of Mojang's own
+// flattening. Every 1.8 block state in it has to come back to the id and data it started as.
+describe.skipIf(!process.env.FLATTENING_TABLE)("Mojang's flattening table", () => {
+  // Pairs that look different but are the same block in 1.8, or that 1.8 works out by itself.
+  const equivalent = (id: number, meta: number, resolved: [number, number]): boolean => {
+    const [rId, rMeta] = resolved;
+    if (rId === id && rMeta === meta) return true;
+    switch (id) {
+      case 8:
+      case 9:
+        return (rId === 8 || rId === 9) && rMeta === meta;
+      case 10:
+      case 11:
+        return (rId === 10 || rId === 11) && rMeta === meta;
+      case 6: // Saplings: bit 8 is growth progress.
+      case 18: // Leaves: bit 8 is the decay check flag.
+      case 161:
+        return rId === id && (rMeta & 7) === (meta & 7);
+      case 43: // Double slabs: bit 8 selects a smooth texture on only some of them.
+      case 125:
+        return rId === id && (rMeta & 7) === (meta & 7);
+      case 140: // Flower pots: the plant is a tile entity.
+        return rId === 140 && rMeta === 0;
+      case 144: // Heads: the rotation is a tile entity.
+        return rId === 144 && (rMeta === meta || meta === 0 || meta >= 8);
+      case 150: // Powered comparators are the same as id 149 with bit 8 set.
+        return rId === 149 && (rMeta & 7) === (meta & 7) && (rMeta & 8) === (meta & 8);
+      case 155: // Quartz pillars have unused metadata duplicates.
+      case 175: // Upper halves of double plants all behave the same.
+        return rId === id;
+      case 99: // Mushroom blocks and stems share faces across several values.
+      case 100:
+      case 17:
+      case 162:
+        return rId === id || (id === 100 && rId === 99);
+      case 31:
+      case 32:
+        return rId === 31 || rId === 32;
+      case 46: // TNT: the flattening has no "unstable" for bit 1, so it reads as plain TNT.
+        return rId === 46;
+      case 132: // Tripwire: bit 2 is the unused "suspended" flag.
+        return rId === 132 && (rMeta & ~2) === (meta & ~2);
+      default:
+        return false;
+    }
+  };
+
+  it("round trips through the resolver", () => {
+    const table = JSON.parse(readFileSync(process.env.FLATTENING_TABLE!, "utf8")).blocks as Record<string, string>;
+    const wrong: string[] = [];
+    for (const [key, text] of Object.entries(table)) {
+      const id = Number(key) >> 4;
+      const meta = Number(key) & 15;
+      if (id > 197) continue;
+      const resolved = state(`minecraft:${text}`);
+      if (!equivalent(id, meta, resolved)) wrong.push(`${id}:${meta} ${text} -> ${resolved.join(":")}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+});
+
 describe("substitutions", () => {
   it.each([
     ["minecraft:red_concrete", [159, 14]],

@@ -15,6 +15,8 @@ Get the latest version from [Releases](https://github.com/okiwiziin/schematic-co
 
 Windows 10 and 11, 64-bit. The app isn't code signed yet, so Windows SmartScreen may warn you the first time. Choose **More info**, then **Run anyway**.
 
+The installed app keeps itself up to date: new versions download in the background from this repository's releases, and a **Restart to update** button appears when one is ready. The portable version tells you when a new one is out. You can turn this off under **More options**.
+
 ## How to use it
 
 1. Drop your files or a whole folder onto the window.
@@ -86,6 +88,7 @@ These need files that aren't in the repository, so they're skipped unless you po
 - **`WORLDEDIT_JARS`**: a folder holding `worldedit-core-6.1.jar`, `guava-18.0.jar`, `gson-2.2.4.jar` and `jsr305-1.3.9.jar`. Converted files are loaded with WorldEdit's real `SchematicReader`, using `test/worldedit/Harness.java`. Needs a JDK.
 - **`BIG_SCHEM` and `BIG_OUTPUT`**: a large `.schem` and the `.schematic` made from it, compared block by block using a separate, deliberately simple decoder.
 - **`SAMPLE_SCHEMATIC`**: any real 1.8 `.schematic` with signs in it, which must come through unchanged.
+- **`FLATTENING_TABLE`**: [ViaVersion's `mapping-1.12.json`](https://github.com/ViaVersion/Mappings/blob/main/mappings/mapping-1.12.json), a dump of Mojang's own flattening. Every block state in it must come back to the id and data it started as.
 
 See [AGENTS.md](AGENTS.md) for how the code is laid out.
 

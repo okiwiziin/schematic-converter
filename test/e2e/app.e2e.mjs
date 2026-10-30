@@ -209,6 +209,8 @@ try {
 
   // Light theme, through the real control.
   await page.getByRole("button", { name: "More options" }).click();
+  await page.getByText(/^Version \d+\.\d+\.\d+$/).waitFor();
+  check(true, "the app shows its version");
   await page.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "Light" }).click();
   await page.waitForTimeout(350);
   await page.getByRole("row", { name: /castle\.schem/ }).click();

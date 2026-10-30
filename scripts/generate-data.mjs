@@ -13,9 +13,48 @@ const legacy = read("common/legacy.json");
 const blocks18 = read("1.8/blocks.json");
 const items18 = read("1.8/items.json");
 
+// minecraft-data has some of these wrong. Set FLATTENING_TABLE and run the tests to compare it
+// with a dump of Mojang's own flattening, which is how these were found.
+function correct(idMeta, state) {
+  const [id, meta] = idMeta.split(":").map(Number);
+  const open = state.indexOf("[");
+  if (open === -1) return state;
+  const name = state.slice(0, open);
+  const props = Object.fromEntries(
+    state
+      .slice(open + 1, -1)
+      .split(",")
+      .map((pair) => pair.split("=")),
+  );
+  const rebuild = () =>
+    `${name}[${Object.entries(props)
+      .map(([key, value]) => `${key}=${value}`)
+      .join(",")}]`;
+
+  switch (id) {
+    case 96: // Wooden trapdoors don't store power, but the table ties it to being open.
+      delete props.powered;
+      return rebuild();
+    case 69: // Levers on floors and ceilings have their handle directions swapped.
+      if (props.face === "wall") return state;
+      props.facing = meta & 1 ? "north" : "west";
+      return rebuild();
+    case 77:
+    case 143: // Buttons on floors and ceilings have no direction at all.
+      if (props.face !== "wall") delete props.facing;
+      return rebuild();
+    case 149:
+    case 150: // Whether a comparator is on is bit 8, not which of its two ids it has.
+      props.powered = meta & 8 ? "true" : "false";
+      return rebuild();
+    default:
+      return state;
+  }
+}
+
 // Flattened state -> "id:meta" pairs, every 1.12 block. The resolver filters out
 // ids above 197 itself so that 1.9-1.12 blocks can still be recognised by name.
-const legacyBlocks = Object.entries(legacy.blocks).map(([idMeta, state]) => [idMeta, state]);
+const legacyBlocks = Object.entries(legacy.blocks).map(([idMeta, state]) => [idMeta, correct(idMeta, state)]);
 const legacyItems = Object.entries(legacy.items).map(([idMeta, name]) => [idMeta, name]);
 
 const blockNames = {};

@@ -1,7 +1,7 @@
 {
   "name": "schematic-converter",
   "productName": "Schematic Converter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Convert modern Minecraft schematics (.schem, .litematic, .nbt) to 1.8.8 .schematic files, including very large maps.",
   "author": "okiwiziin",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "test:e2e": "electron-vite build && node test/e2e/app.e2e.mjs",
     "generate-data": "node scripts/generate-data.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "dist": "electron-vite build && electron-builder --win"
+    "dist": "electron-vite build && electron-builder --win --publish never"
   },
   "build": {
     "appId": "io.github.okiwiziin.schematicconverter",
@@ -54,7 +54,14 @@
     },
     "portable": {
       "artifactName": "Schematic-Converter-${version}-Portable.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "okiwiziin",
+        "repo": "schematic-converter"
+      }
+    ]
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -76,5 +83,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

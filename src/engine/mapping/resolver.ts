@@ -55,16 +55,16 @@ for (const [idMeta, state] of legacyData.blocks as [string, string][]) {
   entries.push({ id, meta, props });
 }
 
-// Doors, beds and tall plants have properties that change what the block fundamentally
-// is, so they outweigh everything else when picking the closest legacy entry.
+// Some properties change what the block fundamentally is: which half of a door, whether a lever
+// is on a wall or the floor. They outweigh everything else when picking the closest legacy entry.
 const PROPERTY_WEIGHT: Record<string, number> = {
   half: 1000,
   part: 1000,
   type: 1000,
+  face: 1000,
   facing: 100,
   axis: 100,
   rotation: 100,
-  face: 100,
   level: 100,
   age: 100,
   layers: 100,
@@ -76,7 +76,7 @@ const PROPERTY_WEIGHT: Record<string, number> = {
   extended: 50,
   persistent: 50,
   inverted: 50,
-  open: 20,
+  open: 50,
   powered: 20,
   occupied: 1,
   snowy: 1,
@@ -96,12 +96,17 @@ function closestEntry(name: string, entries: LegacyEntry[], props: Props): Legac
     const id = level === 0 ? flowing + 1 : flowing;
     return { id, meta: level, props };
   }
+  // A lever on a floor or ceiling lies along an axis, so opposite directions are the same to 1.8.
+  const wanted =
+    name === "lever" && props.face !== "wall" && (props.facing === "south" || props.facing === "east")
+      ? { ...props, facing: props.facing === "south" ? "north" : "west" }
+      : props;
   let best = entries[0]!;
   let bestScore = -1;
   for (const entry of entries) {
     let score = 0;
     for (const [property, value] of Object.entries(entry.props)) {
-      if (props[property] === value) score += propertyWeight(name, property);
+      if (wanted[property] === value) score += propertyWeight(name, property);
     }
     if (score > bestScore) {
       best = entry;
