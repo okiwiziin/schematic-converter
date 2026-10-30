@@ -1,0 +1,4 @@
+# The formatter wants LF, so keep it that way on Windows too.
+* text=auto eol=lf
+*.png binary
+*.exe binary

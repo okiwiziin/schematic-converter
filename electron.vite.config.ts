@@ -8,10 +8,10 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve(__dirname, "src/main/index.ts"),
+          cli: resolve(import.meta.dirname, "src/engine/cli.ts"),
           // The conversion engine runs as its own process, plus a headless CLI.
-          engine: resolve(__dirname, "src/engine/worker.ts"),
-          cli: resolve(__dirname, "src/engine/cli.ts"),
+          engine: resolve(import.meta.dirname, "src/engine/worker.ts"),
+          index: resolve(import.meta.dirname, "src/main/index.ts"),
         },
       },
     },
@@ -19,17 +19,19 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, "src/preload/index.ts") },
+        input: { index: resolve(import.meta.dirname, "src/preload/index.ts") },
       },
     },
   },
   renderer: {
-    root: "src/renderer",
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, "src/renderer/index.html") },
+        input: {
+          index: resolve(import.meta.dirname, "src/renderer/index.html"),
+        },
       },
     },
     plugins: [react(), tailwindcss()],
+    root: "src/renderer",
   },
 });

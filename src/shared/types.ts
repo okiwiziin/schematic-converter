@@ -6,79 +6,79 @@ export type Compression = "fast" | "balanced" | "small";
 
 export interface ConvertOptions {
   compression: Compression;
-  // Split into square files of this many blocks per side. 0 keeps one file when possible.
-  tileSize: number;
   // "id:data" placed for blocks with no known mapping.
   fallback: string;
+  keepEntities: boolean;
+  keepTileEntities: boolean;
   // Block name to "id:data", taking priority over the built-in mapping.
   overrides: Record<string, string>;
-  keepTileEntities: boolean;
-  keepEntities: boolean;
   overwrite: boolean;
+  // Split into square files of this many blocks per side. 0 keeps one file when possible.
+  tileSize: number;
 }
 
 export interface FileInfo {
+  dataVersion: number | null;
+  fileSize: number;
   format: SourceFormat;
   formatLabel: string;
-  width: number;
   height: number;
   length: number;
-  volume: number;
-  fileSize: number;
-  dataVersion: number | null;
-  versionLabel: string | null;
   regionCount: number | null;
+  versionLabel: string | null;
+  volume: number;
+  width: number;
 }
 
 export type ProgressPhase = "reading" | "converting" | "writing" | "finishing";
 
 export interface Progress {
-  phase: ProgressPhase;
+  blocksDone: number;
+  blocksPerSecond: number;
   // 0 to 1 within the current phase.
   fraction: number;
-  blocksDone: number;
+  phase: ProgressPhase;
   volume: number;
-  blocksPerSecond: number;
 }
 
 export interface BlockReportRow {
-  name: string;
   count: number;
-  id: number;
   data: number;
-  target: string;
+  id: number;
   kind: "exact" | "substitute" | "unmapped";
+  name: string;
   overridden: boolean;
+  target: string;
 }
 
 export interface OutputFile {
-  path: string;
-  size: number;
-  width: number;
   height: number;
   length: number;
+  path: string;
+  size: number;
   tileX: number;
   tileZ: number;
+  width: number;
 }
 
 export interface ConvertReport {
-  info: FileInfo;
-  outputs: OutputFile[];
   blocks: BlockReportRow[];
-  warnings: string[];
   durationMs: number;
-  nonAirBlocks: number;
-  tileEntitiesWritten: number;
   entitiesWritten: number;
+  info: FileInfo;
+  nonAirBlocks: number;
+  outputs: OutputFile[];
   split: boolean;
+  tileEntitiesWritten: number;
+  warnings: string[];
 }
 
 export const DEFAULT_OPTIONS: ConvertOptions = {
   compression: "balanced",
-  tileSize: 0,
   fallback: "0:0",
-  overrides: {},
-  keepTileEntities: true,
   keepEntities: true,
+  keepTileEntities: true,
+  overrides: {},
   overwrite: false,
+  tileSize: 0,
 };

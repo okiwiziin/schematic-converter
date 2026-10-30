@@ -2,14 +2,18 @@
 // independently on libuv's thread pool and written in order. Each chunk ends on a
 // byte boundary (Z_SYNC_FLUSH), so compressed sections can be stored in separate
 // files and spliced together afterwards into one ordinary gzip stream.
-import { open, type FileHandle } from "node:fs/promises";
+import { type FileHandle, open } from "node:fs/promises";
 import zlib from "node:zlib";
 
 const DICTIONARY_SIZE = 32 * 1024;
 
 export type CompressionLevel = "fast" | "balanced" | "small";
 
-const LEVELS: Record<CompressionLevel, number> = { fast: 1, balanced: 6, small: 9 };
+const LEVELS: Record<CompressionLevel, number> = {
+  balanced: 6,
+  fast: 1,
+  small: 9,
+};
 
 export class DeflatePool {
   private inFlight = 0;
@@ -18,12 +22,12 @@ export class DeflatePool {
 
   constructor(
     private readonly limit: number,
-    level: CompressionLevel,
+    level: CompressionLevel
   ) {
     this.options = {
+      finishFlush: zlib.constants.Z_SYNC_FLUSH,
       level: LEVELS[level],
       memLevel: 9,
-      finishFlush: zlib.constants.Z_SYNC_FLUSH,
     };
   }
 
@@ -37,12 +41,19 @@ export class DeflatePool {
   deflate(chunk: Uint8Array, dictionary: Buffer | undefined): Promise<Buffer> {
     this.inFlight += 1;
     return new Promise((resolve, reject) => {
-      zlib.deflateRaw(chunk, dictionary ? { ...this.options, dictionary } : this.options, (error, out) => {
-        this.inFlight -= 1;
-        this.waiters.shift()?.();
-        if (error) reject(error);
-        else resolve(out);
-      });
+      zlib.deflateRaw(
+        chunk,
+        dictionary ? { ...this.options, dictionary } : this.options,
+        (error, out) => {
+          this.inFlight -= 1;
+          this.waiters.shift()?.();
+          if (error) {
+            reject(error);
+          } else {
+            resolve(out);
+          }
+        }
+      );
     });
   }
 }
@@ -64,7 +75,7 @@ export class DeflateSection {
   constructor(
     private readonly pool: DeflatePool,
     private readonly chunkSize: number,
-    private readonly fileFactory: () => Promise<FileHandle>,
+    private readonly fileFactory: () => Promise<FileHandle>
   ) {}
 
   private handle(): Promise<FileHandle> {
@@ -72,7 +83,11 @@ export class DeflateSection {
     return this.opening;
   }
 
-  async write(source: Uint8Array, start = 0, end = source.length): Promise<void> {
+  async write(
+    source: Uint8Array,
+    start = 0,
+    end = source.length
+  ): Promise<void> {
     let at = start;
     while (at < end) {
       const current = (this.current ??= Buffer.allocUnsafeSlow(this.chunkSize));
@@ -80,14 +95,20 @@ export class DeflateSection {
       current.set(source.subarray(at, at + take), this.currentLength);
       this.currentLength += take;
       at += take;
-      if (this.currentLength === this.chunkSize) await this.submit();
+      if (this.currentLength === this.chunkSize) {
+        await this.submit();
+      }
     }
   }
 
   private async submit(): Promise<void> {
-    if (this.failure) throw this.failure;
+    if (this.failure) {
+      throw this.failure;
+    }
     const length = this.currentLength;
-    if (length === 0) return;
+    if (length === 0) {
+      return;
+    }
     const chunk = this.current!.subarray(0, length);
     this.current = null;
     this.currentLength = 0;
@@ -96,11 +117,15 @@ export class DeflateSection {
     this.crc = zlib.crc32(chunk, this.crc);
     this.rawLength += length;
     const dictionary = this.tail;
-    this.tail = Buffer.from(chunk.subarray(Math.max(0, length - DICTIONARY_SIZE)));
+    this.tail = Buffer.from(
+      chunk.subarray(Math.max(0, length - DICTIONARY_SIZE))
+    );
     const compressed = this.pool.deflate(chunk, dictionary);
     const file = this.handle();
     this.writing = this.writing.then(async () => {
-      if (this.failure) return;
+      if (this.failure) {
+        return;
+      }
       try {
         const data = await compressed;
         await (await file).write(data);
@@ -118,8 +143,12 @@ export class DeflateSection {
   async finish(): Promise<void> {
     await this.submit();
     await this.writing;
-    if (this.failure) throw this.failure;
-    if (this.file) await this.file.close();
+    if (this.failure) {
+      throw this.failure;
+    }
+    if (this.file) {
+      await this.file.close();
+    }
     this.file = null;
     this.opening = null;
   }
@@ -130,7 +159,8 @@ export class DeflateSection {
   }
 }
 
-export const createFile = (path: string): Promise<FileHandle> => open(path, "w");
+export const createFile = (path: string): Promise<FileHandle> =>
+  open(path, "w");
 
 // GF(2) matrix CRC combination from zlib. The Node API exposes crc32 but not this,
 // and it is what lets sections be compressed before their final order is known.
@@ -141,7 +171,9 @@ function gf2Times(matrix: Uint32Array, vector: number): number {
   let index = 0;
   let value = vector >>> 0;
   while (value !== 0) {
-    if (value & 1) sum ^= matrix[index]!;
+    if (value & 1) {
+      sum ^= matrix[index]!;
+    }
     value >>>= 1;
     index += 1;
   }
@@ -149,14 +181,22 @@ function gf2Times(matrix: Uint32Array, vector: number): number {
 }
 
 function gf2Square(square: Uint32Array, matrix: Uint32Array): void {
-  for (let n = 0; n < GF2_DIM; n++) square[n] = gf2Times(matrix, matrix[n]!);
+  for (let n = 0; n < GF2_DIM; n++) {
+    square[n] = gf2Times(matrix, matrix[n]!);
+  }
 }
 
-export function crc32Combine(crc1: number, crc2: number, length2: number): number {
-  if (length2 <= 0) return crc1 >>> 0;
+export function crc32Combine(
+  crc1: number,
+  crc2: number,
+  length2: number
+): number {
+  if (length2 <= 0) {
+    return crc1 >>> 0;
+  }
   const even = new Uint32Array(GF2_DIM);
   const odd = new Uint32Array(GF2_DIM);
-  odd[0] = 0xedb88320;
+  odd[0] = 0xed_b8_83_20;
   let row = 1;
   for (let n = 1; n < GF2_DIM; n++) {
     odd[n] = row;
@@ -169,11 +209,17 @@ export function crc32Combine(crc1: number, crc2: number, length2: number): numbe
   let remaining = length2;
   do {
     gf2Square(even, odd);
-    if (remaining % 2 === 1) crc = gf2Times(even, crc);
+    if (remaining % 2 === 1) {
+      crc = gf2Times(even, crc);
+    }
     remaining = Math.floor(remaining / 2);
-    if (remaining === 0) break;
+    if (remaining === 0) {
+      break;
+    }
     gf2Square(odd, even);
-    if (remaining % 2 === 1) crc = gf2Times(odd, crc);
+    if (remaining % 2 === 1) {
+      crc = gf2Times(odd, crc);
+    }
     remaining = Math.floor(remaining / 2);
   } while (remaining !== 0);
   return (crc ^ crc2) >>> 0;
@@ -187,7 +233,7 @@ export function storedBlock(data: Uint8Array): Buffer {
   const out = Buffer.allocUnsafe(5 + data.length);
   out[0] = 0;
   out.writeUInt16LE(data.length, 1);
-  out.writeUInt16LE(~data.length & 0xffff, 3);
+  out.writeUInt16LE(~data.length & 0xff_ff, 3);
   out.set(data, 5);
   return out;
 }
@@ -198,10 +244,13 @@ export function gzipTrailer(crc: number, totalLength: number): Buffer {
   out[0] = 0x03;
   out[1] = 0x00;
   out.writeUInt32LE(crc >>> 0, 2);
-  out.writeUInt32LE(totalLength % 0x100000000, 6);
+  out.writeUInt32LE(totalLength % 0x1_00_00_00_00, 6);
   return out;
 }
 
 export function deflateSmall(data: Uint8Array): Buffer {
-  return zlib.deflateRawSync(data, { level: 6, finishFlush: zlib.constants.Z_SYNC_FLUSH });
+  return zlib.deflateRawSync(data, {
+    finishFlush: zlib.constants.Z_SYNC_FLUSH,
+    level: 6,
+  });
 }

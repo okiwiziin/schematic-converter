@@ -1,21 +1,39 @@
 // The contract between the main process and the UI.
-import { DEFAULT_OPTIONS, type ConvertOptions, type ConvertReport, type FileInfo, type Progress } from "./types";
+import {
+  type ConvertOptions,
+  type ConvertReport,
+  DEFAULT_OPTIONS,
+  type FileInfo,
+  type Progress,
+} from "./types";
 
-export const SUPPORTED_EXTENSIONS = [".schem", ".litematic", ".nbt", ".schematic"];
+export const SUPPORTED_EXTENSIONS = [
+  ".schem",
+  ".litematic",
+  ".nbt",
+  ".schematic",
+];
 
-export type JobStatus = "inspecting" | "ready" | "queued" | "converting" | "done" | "failed" | "cancelled";
+export type JobStatus =
+  | "inspecting"
+  | "ready"
+  | "queued"
+  | "converting"
+  | "done"
+  | "failed"
+  | "cancelled";
 
 export interface JobState {
+  error?: string;
   id: string;
-  path: string;
-  name: string;
-  size: number;
-  status: JobStatus;
   info?: FileInfo;
+  name: string;
+  path: string;
   progress?: Progress;
   report?: ConvertReport;
-  error?: string;
+  size: number;
   startedAt?: number;
+  status: JobStatus;
 }
 
 export type UpdateState =
@@ -31,19 +49,19 @@ export type UpdateState =
 export type ThemePreference = "system" | "light" | "dark";
 
 export interface Settings {
-  outputDir: string;
-  options: ConvertOptions;
-  theme: ThemePreference;
-  parallelJobs: number;
   autoUpdate: boolean;
+  options: ConvertOptions;
+  outputDir: string;
+  parallelJobs: number;
+  theme: ThemePreference;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  outputDir: "",
-  options: DEFAULT_OPTIONS,
-  theme: "system",
-  parallelJobs: 1,
   autoUpdate: true,
+  options: DEFAULT_OPTIONS,
+  outputDir: "",
+  parallelJobs: 1,
+  theme: "system",
 };
 
 export type AppEvent =
@@ -57,33 +75,33 @@ export interface AppState {
   jobs: JobState[];
   settings: Settings;
   threads: number;
-  version: string;
   update: UpdateState;
+  version: string;
 }
 
 export interface Block18 {
-  id: number;
   data: number;
+  id: number;
   label: string;
 }
 
 export interface Api {
-  getState(): Promise<AppState>;
-  blocks18(): Promise<Block18[]>;
-  pickFiles(): Promise<void>;
-  pickFolder(): Promise<void>;
   addFiles(files: File[]): Promise<void>;
-  pickOutput(): Promise<string | null>;
-  setSettings(patch: Partial<Settings>): Promise<void>;
-  convert(ids: string[]): Promise<void>;
+  blocks18(): Promise<Block18[]>;
   cancel(id: string): Promise<void>;
-  remove(id: string): Promise<void>;
-  clearFinished(): Promise<void>;
-  reveal(path: string): Promise<void>;
-  openOutputFolder(): Promise<void>;
   checkForUpdates(): Promise<void>;
+  clearFinished(): Promise<void>;
+  convert(ids: string[]): Promise<void>;
+  getState(): Promise<AppState>;
+  glass: boolean;
   installUpdate(): Promise<void>;
   onEvent(listener: (event: AppEvent) => void): () => void;
+  openOutputFolder(): Promise<void>;
+  pickFiles(): Promise<void>;
+  pickFolder(): Promise<void>;
+  pickOutput(): Promise<string | null>;
   platform: string;
-  glass: boolean;
+  remove(id: string): Promise<void>;
+  reveal(path: string): Promise<void>;
+  setSettings(patch: Partial<Settings>): Promise<void>;
 }

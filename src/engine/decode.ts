@@ -15,15 +15,15 @@ export interface SpecialSink {
 }
 
 export interface DecodeState {
-  palette: PaletteTable;
-  specials: SpecialSink;
-  target: RunTarget;
-  onProgress: (blocksDone: number) => void;
   invalid: number;
+  onProgress: (blocksDone: number) => void;
+  palette: PaletteTable;
   // Added to every palette index, for files where each region has its own palette.
   paletteBase?: number;
   // How many of those entries belong to this region. Indices at or past it are invalid.
   paletteCount?: number;
+  specials: SpecialSink;
+  target: RunTarget;
 }
 
 // Writes `length` varint palette indices (the .schem format) to the target.
@@ -32,7 +32,7 @@ export async function decodeVarints(
   byteLength: number,
   expected: number,
   state: DecodeState,
-  positionBase = 0,
+  positionBase = 0
 ): Promise<number> {
   const ids = new Uint8Array(RUN_SIZE);
   const data = new Uint8Array(RUN_SIZE);
@@ -49,7 +49,9 @@ export async function decodeVarints(
   let invalid = 0;
 
   while (remaining > 0) {
-    if (reader.end - reader.pos < Math.min(5, remaining)) await reader.ensure(Math.min(5, remaining));
+    if (reader.end - reader.pos < Math.min(5, remaining)) {
+      await reader.ensure(Math.min(5, remaining));
+    }
     const buffer = reader.buf;
     let at = reader.pos;
     const available = Math.min(reader.end - at, remaining);
@@ -67,7 +69,9 @@ export async function decodeVarints(
         // Maps are mostly long runs of air and stone, so take a whole run at a time.
         const scanStop = Math.min(safeStop, at + want - out - 1);
         let scan = at;
-        while (scan < scanStop && buffer[scan] === value) scan++;
+        while (scan < scanStop && buffer[scan] === value) {
+          scan++;
+        }
         const run = scan - at + 1;
         at = scan;
         if (value >= paletteSize) {
@@ -90,7 +94,9 @@ export async function decodeVarints(
         }
         counts[value]! += run;
         if (lutSpecial[value] === 1) {
-          for (let i = 0; i < run; i++) specials.push(positionBase + produced + out + i, value);
+          for (let i = 0; i < run; i++) {
+            specials.push(positionBase + produced + out + i, value);
+          }
         }
         out += run;
         continue;
@@ -122,7 +128,9 @@ export async function decodeVarints(
       ids[out] = lutIds[value]!;
       data[out] = lutData[value]!;
       counts[value]! += 1;
-      if (lutSpecial[value] === 1) specials.push(positionBase + produced + out, value);
+      if (lutSpecial[value] === 1) {
+        specials.push(positionBase + produced + out, value);
+      }
       out += 1;
     }
 
@@ -134,7 +142,9 @@ export async function decodeVarints(
       out = 0;
       state.onProgress(produced);
     } else if (want === 0) {
-      throw new Error(`Block data has more blocks than the schematic's size of ${expected}`);
+      throw new Error(
+        `Block data has more blocks than the schematic's size of ${expected}`
+      );
     } else if (at === before) {
       // Fewer than 5 bytes in the buffer but more in the array: pull in the next chunk.
       await reader.ensure(Math.min(reader.end - reader.pos + 1, remaining));
@@ -157,7 +167,7 @@ export async function decodePacked(
   bits: number,
   entryCount: number,
   state: DecodeState,
-  positionBase = 0,
+  positionBase = 0
 ): Promise<void> {
   const ids = new Uint8Array(RUN_SIZE);
   const data = new Uint8Array(RUN_SIZE);
@@ -166,7 +176,7 @@ export async function decodePacked(
   const lutData = palette.data;
   const lutSpecial = palette.special;
   const counts = palette.counts;
-  const valueMask = bits >= 32 ? 0xffffffff : ((1 << bits) >>> 0) - 1;
+  const valueMask = bits >= 32 ? 0xff_ff_ff_ff : ((1 << bits) >>> 0) - 1;
   const base = state.paletteBase ?? 0;
   const zeroId = lutIds[base]!;
   const zeroData = lutData[base]!;
@@ -189,11 +199,16 @@ export async function decodePacked(
       state.onProgress(produced);
     }
     // Pull whole longs through one 32-bit word at a time, low word first.
-    if (!hasPendingHigh && longsLeft > 0 && reader.end - reader.pos < 8) await reader.ensure(8);
+    if (!hasPendingHigh && longsLeft > 0 && reader.end - reader.pos < 8) {
+      await reader.ensure(8);
+    }
 
     const buffer = reader.buf;
     let at = reader.pos;
-    const longsBuffered = Math.min(longsLeft, Math.floor((reader.end - at) / 8));
+    const longsBuffered = Math.min(
+      longsLeft,
+      Math.floor((reader.end - at) / 8)
+    );
     const stopAt = at + longsBuffered * 8;
     const limit = Math.min(RUN_SIZE, entryCount - produced);
 
@@ -210,13 +225,24 @@ export async function decodePacked(
           let scan = at;
           while (
             scan < stopAt &&
-            (buffer[scan]! | buffer[scan + 1]! | buffer[scan + 2]! | buffer[scan + 3]! | buffer[scan + 4]! | buffer[scan + 5]! | buffer[scan + 6]! | buffer[scan + 7]!) === 0
+            (buffer[scan]! |
+              buffer[scan + 1]! |
+              buffer[scan + 2]! |
+              buffer[scan + 3]! |
+              buffer[scan + 4]! |
+              buffer[scan + 5]! |
+              buffer[scan + 6]! |
+              buffer[scan + 7]!) ===
+              0
           ) {
             scan += 8;
           }
           if (scan > at) {
             // Whole entries only; any partial one stays in `available` as zero bits.
-            const entries = Math.min(Math.floor((available + (scan - at) * 8) / bits), limit - out);
+            const entries = Math.min(
+              Math.floor((available + (scan - at) * 8) / bits),
+              limit - out
+            );
             const bitsWanted = entries * bits - available;
             const longsUsed = bitsWanted <= 0 ? 0 : Math.ceil(bitsWanted / 64);
             if (entries > 0 && longsUsed * 8 <= scan - at) {
@@ -236,8 +262,16 @@ export async function decodePacked(
           word = pendingHigh;
           hasPendingHigh = false;
         } else if (at < stopAt) {
-          pendingHigh = (buffer[at]! << 24) | (buffer[at + 1]! << 16) | (buffer[at + 2]! << 8) | buffer[at + 3]!;
-          word = (buffer[at + 4]! << 24) | (buffer[at + 5]! << 16) | (buffer[at + 6]! << 8) | buffer[at + 7]!;
+          pendingHigh =
+            (buffer[at]! << 24) |
+            (buffer[at + 1]! << 16) |
+            (buffer[at + 2]! << 8) |
+            buffer[at + 3]!;
+          word =
+            (buffer[at + 4]! << 24) |
+            (buffer[at + 5]! << 16) |
+            (buffer[at + 6]! << 8) |
+            buffer[at + 7]!;
           hasPendingHigh = true;
           at += 8;
           longsLeft -= 1;
@@ -259,7 +293,9 @@ export async function decodePacked(
       ids[out] = lutIds[value]!;
       data[out] = lutData[value]!;
       counts[value]! += 1;
-      if (lutSpecial[value] === 1) specials.push(positionBase + produced + out, value);
+      if (lutSpecial[value] === 1) {
+        specials.push(positionBase + produced + out, value);
+      }
       out += 1;
     }
     reader.pos = at;
@@ -274,5 +310,7 @@ export async function decodePacked(
     produced += out;
     state.onProgress(produced);
   }
-  if (longsLeft > 0) await reader.skip(longsLeft * 8);
+  if (longsLeft > 0) {
+    await reader.skip(longsLeft * 8);
+  }
 }

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Api, AppEvent, JobState, Settings, UpdateState } from "../../shared/ipc";
+import type {
+  Api,
+  AppEvent,
+  JobState,
+  Settings,
+  UpdateState,
+} from "../../shared/ipc";
 
 declare global {
   interface Window {
@@ -11,13 +17,13 @@ export const api = window.api;
 
 export interface Store {
   jobs: JobState[];
-  settings: Settings | null;
-  threads: number;
-  version: string;
-  update: UpdateState;
-  selectedId: string | null;
   select: (id: string | null) => void;
   selected: JobState | null;
+  selectedId: string | null;
+  settings: Settings | null;
+  threads: number;
+  update: UpdateState;
+  version: string;
 }
 
 export function useStore(): Store {
@@ -41,7 +47,9 @@ export function useStore(): Store {
         case "job":
           setJobs((current) => {
             const index = current.findIndex((job) => job.id === event.job.id);
-            if (index === -1) return [...current, event.job];
+            if (index === -1) {
+              return [...current, event.job];
+            }
             const next = current.slice();
             next[index] = event.job;
             return next;
@@ -64,9 +72,24 @@ export function useStore(): Store {
     });
   }, []);
 
-  const selected = useMemo(() => jobs.find((job) => job.id === selectedId) ?? null, [jobs, selectedId]);
-  return { jobs, settings, threads, version, update, selectedId, select, selected };
+  const selected = useMemo(
+    () => jobs.find((job) => job.id === selectedId) ?? null,
+    [jobs, selectedId]
+  );
+  return {
+    jobs,
+    select,
+    selected,
+    selectedId,
+    settings,
+    threads,
+    update,
+    version,
+  };
 }
 
 export const canStart = (job: JobState): boolean =>
-  Boolean(job.info) && (job.status === "ready" || job.status === "cancelled" || job.status === "failed");
+  Boolean(job.info) &&
+  (job.status === "ready" ||
+    job.status === "cancelled" ||
+    job.status === "failed");

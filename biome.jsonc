@@ -1,0 +1,77 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/biome/core", "ultracite/biome/react"],
+  "files": {
+    // Generated data, and files that aren't ours to reformat.
+    "includes": [
+      "!src/engine/data",
+      "!THIRD_PARTY_NOTICES.md",
+      "!LICENSE",
+      "!package-lock.json"
+    ]
+  },
+  "linter": {
+    "rules": {
+      // Everything here clashes with how this project works on purpose. Anything not listed is on.
+      "a11y": {
+        // The file list needs nested buttons in its rows, which real table markup makes harder.
+        "useSemanticElements": "off"
+      },
+      "complexity": {
+        // Format parsers are one long list of cases by nature.
+        "noExcessiveCognitiveComplexity": "off",
+        // `void` marks a promise nobody needs to wait for.
+        "noVoid": "off"
+      },
+      "performance": {
+        // Reading and writing a stream in order is the whole point of the engine.
+        "noAwaitInLoops": "off",
+        // A small UI with a short list of rows. Not worth memoising every handler.
+        "noJsxPropsBind": "off",
+        "useTopLevelRegex": "off"
+      },
+      "style": {
+        // The hot loops in src/engine/decode.ts read typed arrays with noUncheckedIndexedAccess on.
+        // Replacing `!` with a fallback would cost a branch per block.
+        "noNonNullAssertion": "off",
+        "noIncrementDecrement": "off",
+        "noParameterProperties": "off",
+        "useConsistentMethodSignatures": "off",
+        // Exhaustive switches over union types, where a default would hide a missing case.
+        "useDefaultSwitchClause": "off",
+        "useDestructuring": "off",
+        "useFilenamingConvention": "off"
+      },
+      "suspicious": {
+        // Binary formats are bit operations.
+        "noBitwiseOperators": "off",
+        // The NBT walker's callbacks are short assignments.
+        "noAssignInExpressions": "off",
+        "noReturnAssign": "off",
+        "noLoopFunc": "off",
+        "noLeakedRender": "off",
+        // Can't see that a field changes between calls, so it flags most of the state in classes.
+        "noUnnecessaryConditions": "off",
+        // The only target is the Chromium that ships with Electron.
+        "useBaseline": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // NBT fixtures are written in key order on purpose: tag order is what many tests are testing.
+      "includes": ["test/**"],
+      "assist": { "actions": { "source": { "useSortedKeys": "off" } } },
+      "linter": {
+        "rules": {
+          "style": { "noNestedTernary": "off" },
+          "suspicious": { "useAwait": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["scripts/**"],
+      "linter": { "rules": { "performance": { "noDelete": "off" } } }
+    }
+  ]
+}

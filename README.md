@@ -70,6 +70,8 @@ npm install
 npm run dev        # Run the app with hot reload
 npm test           # Unit and conversion tests
 npm run test:e2e   # Drive the real app with Playwright
+npm run format     # Format and apply safe fixes, with Ultracite
+npm run lint       # Check formatting and lint rules
 npm run dist       # Build the Windows installer and portable app into dist/
 ```
 

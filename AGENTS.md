@@ -9,6 +9,8 @@ npm run dev        # Run the app
 npm run typecheck
 npm test           # Fast. Run after any engine change
 npm run test:e2e   # Builds, then drives the real app. Run after any UI change
+npm run format     # Ultracite: formats and applies safe fixes. Run before committing
+npm run lint       # Must pass
 npm run dist       # Windows installer and portable app, into dist/
 ```
 
@@ -38,6 +40,10 @@ src/shared/       Types used across the process boundaries
 test/             Vitest suites, the WorldEdit harness, the end-to-end script
 scripts/          Data and icon generators, and a big map generator for benchmarks
 ```
+
+## Formatting and lint
+
+Ultracite on top of Biome. Rules that clash with how this project works are off in `biome.jsonc`, each with its reason, and everything else is meant to pass, so fix what `npm run lint` reports rather than silencing it. Key sorting stays off in `test/`: the order of keys in an NBT fixture is often what the test is testing.
 
 ## How a conversion works
 

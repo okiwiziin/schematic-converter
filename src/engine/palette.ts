@@ -1,6 +1,7 @@
 // The lookup tables the hot loops run on, and the records of which blocks were seen.
-import { needsTileEntity } from "./mapping/tileEntities";
+
 import type { Resolved } from "./mapping/resolver";
+import { needsTileEntity } from "./mapping/tileEntities";
 
 export class PaletteTable {
   ids = new Uint8Array(0);
@@ -10,7 +11,9 @@ export class PaletteTable {
   resolved: (Resolved | undefined)[] = [];
 
   ensure(size: number): void {
-    if (size <= this.ids.length) return;
+    if (size <= this.ids.length) {
+      return;
+    }
     const capacity = Math.max(size, this.ids.length * 2, 64);
     const grow = <T extends Uint8Array | Float64Array>(old: T, next: T): T => {
       next.set(old);
@@ -50,18 +53,24 @@ export class SpecialIndex {
       blocks.set(this.blocks);
       this.blocks = blocks;
     }
-    if (this.size > 0 && position < this.positions[this.size - 1]!) this.sorted = false;
+    if (this.size > 0 && position < this.positions[this.size - 1]!) {
+      this.sorted = false;
+    }
     this.positions[this.size] = position;
     this.blocks[this.size] = block;
     this.size += 1;
   }
 
   finalize(): void {
-    if (this.consumed) return;
+    if (this.consumed) {
+      return;
+    }
     this.consumed = new Uint8Array(this.size);
     if (!this.sorted) {
       const order = new Uint32Array(this.size);
-      for (let i = 0; i < this.size; i++) order[i] = i;
+      for (let i = 0; i < this.size; i++) {
+        order[i] = i;
+      }
       const positions = this.positions;
       order.sort((a, b) => positions[a]! - positions[b]!);
       this.order = order;
@@ -84,27 +93,32 @@ export class SpecialIndex {
         this.consumed![actual] = 1;
         return this.blocks[actual];
       }
-      if (value < position) low = middle + 1;
-      else high = middle - 1;
+      if (value < position) {
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
     }
     return undefined;
   }
 
   *remaining(): Generator<[number, number]> {
     for (let i = 0; i < this.size; i++) {
-      if (!this.consumed![i]) yield [this.positions[i]!, this.blocks[i]!];
+      if (!this.consumed![i]) {
+        yield [this.positions[i]!, this.blocks[i]!];
+      }
     }
   }
 }
 
-export type BlockRecord = {
-  name: string;
+export interface BlockRecord {
   count: number;
-  id: number;
   data: number;
+  id: number;
   kind: Resolved["kind"];
+  name: string;
   overridden: boolean;
-};
+}
 
 // Report rows, grouped by block name with the most common target for that name.
 export function collectBlockRecords(palette: PaletteTable): BlockRecord[] {
@@ -112,17 +126,19 @@ export function collectBlockRecords(palette: PaletteTable): BlockRecord[] {
   for (let index = 0; index < palette.resolved.length; index++) {
     const block = palette.resolved[index];
     const count = palette.counts[index] ?? 0;
-    if (!block || count === 0) continue;
+    if (!block || count === 0) {
+      continue;
+    }
     const existing = byName.get(block.name);
     if (!existing) {
       byName.set(block.name, {
-        name: block.name,
-        count,
-        id: block.id,
-        data: block.data,
-        kind: block.kind,
-        overridden: block.overridden,
         best: count,
+        count,
+        data: block.data,
+        id: block.id,
+        kind: block.kind,
+        name: block.name,
+        overridden: block.overridden,
       });
       continue;
     }

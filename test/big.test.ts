@@ -5,19 +5,30 @@ import { readFileSync } from "node:fs";
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { BlockResolver } from "../src/engine/mapping/resolver";
-import { asCompound, asNumber, NbtReader, SKIP, walk } from "../src/engine/nbt/nbt";
+import {
+  asCompound,
+  asNumber,
+  NbtReader,
+  SKIP,
+  walk,
+} from "../src/engine/nbt/nbt";
 
 const source = process.env.BIG_SCHEM;
 const output = process.env.BIG_OUTPUT;
 
 function findTag(buffer: Buffer, type: number, name: string): number {
-  const needle = Buffer.concat([Buffer.from([type, 0, name.length]), Buffer.from(name)]);
+  const needle = Buffer.concat([
+    Buffer.from([type, 0, name.length]),
+    Buffer.from(name),
+  ]);
   const at = buffer.indexOf(needle);
-  if (at === -1) throw new Error(`No ${name} tag`);
+  if (at === -1) {
+    throw new Error(`No ${name} tag`);
+  }
   return at + needle.length;
 }
 
-describe.skipIf(!source || !output)("a large conversion", () => {
+describe.skipIf(!(source && output))("a large conversion", () => {
   it("matches an independent decode of the source, every block", async () => {
     const inflated = zlib.gunzipSync(readFileSync(source!));
     const result = zlib.gunzipSync(readFileSync(output!));
@@ -27,13 +38,17 @@ describe.skipIf(!source || !output)("a large conversion", () => {
     let sent = false;
     const reader = new NbtReader({
       next: async () => {
-        if (sent) return { done: true, value: undefined };
+        if (sent) {
+          return { done: true, value: undefined };
+        }
         sent = true;
         return { done: false, value: inflated };
       },
     });
     await walk(reader, (path) => {
-      if (path !== "/Palette") return SKIP;
+      if (path !== "/Palette") {
+        return SKIP;
+      }
       return {
         kind: "value",
         use: (tag) => {
@@ -66,18 +81,25 @@ describe.skipIf(!source || !output)("a large conversion", () => {
       for (;;) {
         const byte = inflated[at++]!;
         value |= (byte & 127) << shift;
-        if (byte < 128) break;
+        if (byte < 128) {
+          break;
+        }
         shift += 7;
       }
-      if (result[blocksStart + 4 + i] !== luts.ids[value] || result[dataStart + 4 + i] !== luts.data[value]) {
+      if (
+        result[blocksStart + 4 + i] !== luts.ids[value] ||
+        result[dataStart + 4 + i] !== luts.data[value]
+      ) {
         mismatches += 1;
         if (samples.length < 12) {
-          samples.push(`#${i} index=${value} expected=${luts.ids[value]}:${luts.data[value]} actual=${result[blocksStart + 4 + i]}:${result[dataStart + 4 + i]}`);
+          samples.push(
+            `#${i} index=${value} expected=${luts.ids[value]}:${luts.data[value]} actual=${result[blocksStart + 4 + i]}:${result[dataStart + 4 + i]}`
+          );
         }
       }
     }
     expect(at).toBe(end);
     expect(samples).toEqual([]);
     expect(mismatches).toBe(0);
-  }, 600000);
+  }, 600_000);
 });

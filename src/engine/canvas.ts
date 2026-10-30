@@ -8,8 +8,8 @@ const PAGE_BITS = 22;
 const PAGE_SIZE = 1 << PAGE_BITS;
 
 interface Page {
-  ids: Uint8Array;
   data: Uint8Array;
+  ids: Uint8Array;
 }
 
 export class BlockCanvas {
@@ -22,11 +22,13 @@ export class BlockCanvas {
   constructor(
     readonly volume: number,
     private readonly scratchPath: string,
-    private readonly maxPages = 128,
+    private readonly maxPages = 128
   ) {}
 
   private page(index: number): Page {
-    if (index === this.lastPageIndex && this.lastPage) return this.lastPage;
+    if (index === this.lastPageIndex && this.lastPage) {
+      return this.lastPage;
+    }
     let page = this.pages.get(index);
     if (page) {
       // Re-inserting keeps the Map ordered from least to most recently used.
@@ -35,7 +37,9 @@ export class BlockCanvas {
     } else {
       page = this.load(index);
       this.pages.set(index, page);
-      if (this.pages.size > this.maxPages) this.evictOldest();
+      if (this.pages.size > this.maxPages) {
+        this.evictOldest();
+      }
     }
     this.lastPageIndex = index;
     this.lastPage = page;
@@ -43,7 +47,10 @@ export class BlockCanvas {
   }
 
   private load(index: number): Page {
-    const page = { ids: new Uint8Array(PAGE_SIZE), data: new Uint8Array(PAGE_SIZE) };
+    const page = {
+      data: new Uint8Array(PAGE_SIZE),
+      ids: new Uint8Array(PAGE_SIZE),
+    };
     if (this.onDisk.has(index)) {
       const fd = this.scratch();
       const offset = index * PAGE_SIZE * 2;
@@ -60,7 +67,9 @@ export class BlockCanvas {
 
   private evictOldest(): void {
     const oldest = this.pages.keys().next().value;
-    if (oldest === undefined) return;
+    if (oldest === undefined) {
+      return;
+    }
     const page = this.pages.get(oldest)!;
     const fd = this.scratch();
     const offset = oldest * PAGE_SIZE * 2;
@@ -82,7 +91,9 @@ export class BlockCanvas {
   }
 
   // Calls `emit` with every block in order, then frees the storage.
-  async drain(emit: (ids: Uint8Array, data: Uint8Array, count: number) => Promise<void>): Promise<void> {
+  async drain(
+    emit: (ids: Uint8Array, data: Uint8Array, count: number) => Promise<void>
+  ): Promise<void> {
     const zeros = new Uint8Array(PAGE_SIZE);
     const pageCount = Math.ceil(this.volume / PAGE_SIZE);
     for (let index = 0; index < pageCount; index++) {

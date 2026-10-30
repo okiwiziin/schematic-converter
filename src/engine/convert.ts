@@ -20,24 +20,32 @@ import { BlockCanvas } from "./canvas";
 import versions from "./data/versions.json";
 import { decodePacked, decodeVarints, type RunTarget } from "./decode";
 import { translateEntity } from "./mapping/entities";
-import { BlockResolver, displayName18, type Resolved } from "./mapping/resolver";
-import { isWorthReporting, translateTile, type TileContext } from "./mapping/tileEntities";
+import {
+  BlockResolver,
+  displayName18,
+  type Resolved,
+} from "./mapping/resolver";
+import {
+  isWorthReporting,
+  type TileContext,
+  translateTile,
+} from "./mapping/tileEntities";
 import {
   asCompound,
   asList,
   asNumber,
   asString,
   asTriple,
+  type Compound,
   child,
   ENTER,
   NbtReader,
+  type NbtTag,
   SKIP,
   STOP,
   TAG,
-  walk,
-  type Compound,
-  type NbtTag,
   type WalkAction,
+  walk,
 } from "./nbt/nbt";
 import { planTiles, SchematicOutput, type WorldEditOrigin } from "./output";
 import { collectBlockRecords, PaletteTable, SpecialIndex } from "./palette";
@@ -47,17 +55,17 @@ const MAX_PASSES = 4;
 
 export interface ConvertRequest {
   input: string;
+  onProgress?: (progress: Progress) => void;
+  options: ConvertOptions;
   outputDir: string;
   tempDir: string;
-  options: ConvertOptions;
   threads: number;
-  onProgress?: (progress: Progress) => void;
 }
 
 interface Source {
-  reader: NbtReader;
   bytesRead: () => number;
   close: () => void;
+  reader: NbtReader;
 }
 
 async function isGzip(path: string): Promise<boolean> {
@@ -73,42 +81,54 @@ async function isGzip(path: string): Promise<boolean> {
 
 async function openSource(path: string): Promise<Source> {
   const gzipped = await isGzip(path);
-  const file: ReadStream = createReadStream(path, { highWaterMark: CHUNK_SIZE });
+  const file: ReadStream = createReadStream(path, {
+    highWaterMark: CHUNK_SIZE,
+  });
   if (!gzipped) {
     return {
-      reader: new NbtReader(file[Symbol.asyncIterator]() as AsyncIterator<Buffer>),
       bytesRead: () => file.bytesRead,
       close: () => file.destroy(),
+      reader: new NbtReader(
+        file[Symbol.asyncIterator]() as AsyncIterator<Buffer>
+      ),
     };
   }
   const gunzip = zlib.createGunzip({ chunkSize: CHUNK_SIZE });
-  pipelineCallback(file, gunzip, () => {});
+  pipelineCallback(file, gunzip, () => {
+    // Failures also reach whoever is reading the stream, and that's where they're handled.
+  });
   return {
-    reader: new NbtReader(gunzip[Symbol.asyncIterator]() as AsyncIterator<Buffer>),
     bytesRead: () => file.bytesRead,
     close: () => {
       file.destroy();
       gunzip.destroy();
     },
+    reader: new NbtReader(
+      gunzip[Symbol.asyncIterator]() as AsyncIterator<Buffer>
+    ),
   };
 }
 
 function versionLabel(dataVersion: number | null): string | null {
-  if (dataVersion === null) return null;
+  if (dataVersion === null) {
+    return null;
+  }
   const table = versions as [number, string][];
   let label: string | null = null;
   for (const [version, name] of table) {
-    if (version > dataVersion) break;
+    if (version > dataVersion) {
+      break;
+    }
     label = name;
   }
   return label;
 }
 
 const FORMAT_LABELS: Record<SourceFormat, string> = {
-  sponge: "Sponge schematic",
-  litematic: "Litematica",
-  structure: "Structure block",
   legacy: "Legacy schematic",
+  litematic: "Litematica",
+  sponge: "Sponge schematic",
+  structure: "Structure block",
 };
 
 // Reads just enough of a file to identify it, stopping as soon as it can.
@@ -141,23 +161,29 @@ async function readFileInfo(path: string): Promise<FileInfo> {
     kind: "value",
     use: (tag) => {
       const value = asNumber(tag);
-      if (value !== undefined) use(value);
+      if (value !== undefined) {
+        use(value);
+      }
     },
   });
 
   try {
     await walk(source.reader, (rawPath, type) => {
-      if (known()) return STOP;
-      const path = rawPath.startsWith("/Schematic") ? rawPath.slice(10) : rawPath;
-      switch (path) {
+      if (known()) {
+        return STOP;
+      }
+      const tagPath = rawPath.startsWith("/Schematic")
+        ? rawPath.slice(10)
+        : rawPath;
+      switch (tagPath) {
         case "":
           return type === TAG.Compound ? ENTER : SKIP;
         case "/Width":
-          return number((value) => (width = value & 0xffff));
+          return number((value) => (width = value & 0xff_ff));
         case "/Height":
-          return number((value) => (height = value & 0xffff));
+          return number((value) => (height = value & 0xff_ff));
         case "/Length":
-          return number((value) => (length = value & 0xffff));
+          return number((value) => (length = value & 0xff_ff));
         case "/DataVersion":
         case "/MinecraftDataVersion":
           return number((value) => (dataVersion = value));
@@ -174,7 +200,7 @@ async function readFileInfo(path: string): Promise<FileInfo> {
         case "/Regions":
           format = "litematic";
           // The metadata normally comes first; don't read gigabytes looking for it.
-          return width !== undefined ? STOP : SKIP;
+          return width === undefined ? SKIP : STOP;
         case "/Metadata":
           return ENTER;
         case "/Metadata/RegionCount":
@@ -197,7 +223,9 @@ async function readFileInfo(path: string): Promise<FileInfo> {
             kind: "value",
             use: (tag) => {
               const size = asTriple(tag);
-              if (size) [width, height, length] = size;
+              if (size) {
+                [width, height, length] = size;
+              }
             },
           };
         case "/palette":
@@ -213,20 +241,27 @@ async function readFileInfo(path: string): Promise<FileInfo> {
     source.close();
   }
 
-  if (!format || width === undefined || height === undefined || length === undefined) {
-    throw new Error("This doesn't look like a schematic: it has no recognisable block data or size");
+  if (
+    !format ||
+    width === undefined ||
+    height === undefined ||
+    length === undefined
+  ) {
+    throw new Error(
+      "This doesn't look like a schematic: it has no recognisable block data or size"
+    );
   }
   return {
+    dataVersion,
+    fileSize,
     format,
     formatLabel: FORMAT_LABELS[format],
-    width,
     height,
     length,
-    volume: width * height * length,
-    fileSize,
-    dataVersion,
-    versionLabel: versionLabel(dataVersion),
     regionCount,
+    versionLabel: versionLabel(dataVersion),
+    volume: width * height * length,
+    width,
   };
 }
 
@@ -242,7 +277,14 @@ class Job {
   height = 0;
   length = 0;
   volume = 0;
-  origin: WorldEditOrigin = { originX: 0, originY: 0, originZ: 0, offsetX: 0, offsetY: 0, offsetZ: 0 };
+  origin: WorldEditOrigin = {
+    offsetX: 0,
+    offsetY: 0,
+    offsetZ: 0,
+    originX: 0,
+    originY: 0,
+    originZ: 0,
+  };
   tilesWritten = 0;
   entitiesWritten = 0;
   split = false;
@@ -257,8 +299,15 @@ class Job {
 
   constructor(readonly request: ConvertRequest) {
     const [id, data] = request.options.fallback.split(":").map(Number);
-    this.resolver = new BlockResolver([id ?? 0, data ?? 0], request.options.overrides);
-    this.tileCtx = { resolver: this.resolver, dropped: new Map(), orphans: new Map() };
+    this.resolver = new BlockResolver(
+      [id ?? 0, data ?? 0],
+      request.options.overrides
+    );
+    this.tileCtx = {
+      dropped: new Map(),
+      orphans: new Map(),
+      resolver: this.resolver,
+    };
   }
 
   async prepare(fileSize: number): Promise<void> {
@@ -269,7 +318,9 @@ class Job {
 
   private async pickBaseName(): Promise<string> {
     const stem = basename(this.request.input, extname(this.request.input));
-    if (this.request.options.overwrite) return stem;
+    if (this.request.options.overwrite) {
+      return stem;
+    }
     const taken = async (name: string): Promise<boolean> => {
       for (const file of [`${name}.schematic`, `${name}_x0_z0.schematic`]) {
         try {
@@ -281,10 +332,14 @@ class Job {
       }
       return false;
     };
-    if (!(await taken(stem))) return stem;
-    for (let n = 2; n < 10000; n++) {
+    if (!(await taken(stem))) {
+      return stem;
+    }
+    for (let n = 2; n < 10_000; n++) {
       const candidate = `${stem} (${n})`;
-      if (!(await taken(candidate))) return candidate;
+      if (!(await taken(candidate))) {
+        return candidate;
+      }
     }
     throw new Error("Couldn't find a free output file name");
   }
@@ -295,7 +350,9 @@ class Job {
   }
 
   setDimensions(width: number, height: number, length: number): void {
-    if (width <= 0 || height <= 0 || length <= 0) throw new Error(`Invalid schematic size ${width}×${height}×${length}`);
+    if (width <= 0 || height <= 0 || length <= 0) {
+      throw new Error(`Invalid schematic size ${width}×${height}×${length}`);
+    }
     this.width = width;
     this.height = height;
     this.length = length;
@@ -303,13 +360,20 @@ class Job {
   }
 
   async ensureOutput(): Promise<SchematicOutput> {
-    if (this.output) return this.output;
+    if (this.output) {
+      return this.output;
+    }
     const { options, outputDir, tempDir, threads } = this.request;
-    const { layout, forced } = planTiles(this.width, this.height, this.length, options.tileSize);
+    const { layout, forced } = planTiles(
+      this.width,
+      this.height,
+      this.length,
+      options.tileSize
+    );
     this.split = layout.columns * layout.rows > 1;
     if (forced) {
       this.warnings.push(
-        `Split into ${layout.columns * layout.rows} files of ${layout.tileWidth}×${layout.tileLength} blocks because a single 1.8 schematic can't hold ${Math.round(this.volume / 1e6).toLocaleString("en-US")} million blocks.`,
+        `Split into ${layout.columns * layout.rows} files of ${layout.tileWidth}×${layout.tileLength} blocks because a single 1.8 schematic can't hold ${Math.round(this.volume / 1e6).toLocaleString("en-US")} million blocks.`
       );
     }
     this.output = new SchematicOutput(
@@ -321,7 +385,7 @@ class Job {
       outputDir,
       this.baseName,
       options.compression,
-      threads,
+      threads
     );
     await this.output.begin();
     return this.output;
@@ -329,21 +393,28 @@ class Job {
 
   progress(phase: ProgressPhase, blocksDone: number, fraction?: number): void {
     const now = Date.now();
-    if (now - this.lastProgress < 100) return;
+    if (now - this.lastProgress < 100) {
+      return;
+    }
     const elapsed = (now - this.lastTime) / 1000;
     if (elapsed > 0.05) {
       const instant = (blocksDone - this.lastBlocks) / elapsed;
-      if (instant >= 0) this.rate = this.rate === 0 ? instant : this.rate * 0.7 + instant * 0.3;
+      if (instant >= 0) {
+        this.rate = this.rate === 0 ? instant : this.rate * 0.7 + instant * 0.3;
+      }
       this.lastBlocks = blocksDone;
       this.lastTime = now;
     }
     this.lastProgress = now;
     this.request.onProgress?.({
-      phase,
-      fraction: Math.min(1, fraction ?? (this.volume > 0 ? blocksDone / this.volume : 0)),
       blocksDone,
-      volume: this.volume,
       blocksPerSecond: this.rate,
+      fraction: Math.min(
+        1,
+        fraction ?? (this.volume > 0 ? blocksDone / this.volume : 0)
+      ),
+      phase,
+      volume: this.volume,
     });
   }
 
@@ -359,11 +430,11 @@ class Job {
 
   decodeState(target: RunTarget) {
     return {
+      invalid: 0,
+      onProgress: (done: number) => this.progress("converting", done),
       palette: this.palette,
       specials: this.specials,
       target,
-      invalid: 0,
-      onProgress: (done: number) => this.progress("converting", done),
     };
   }
 
@@ -376,12 +447,29 @@ class Job {
   }
 
   // A block entity from the source, at a position within the output.
-  async sourceTile(x: number, y: number, z: number, source: Compound): Promise<void> {
-    if (!this.request.options.keepTileEntities) return;
+  async sourceTile(
+    x: number,
+    y: number,
+    z: number,
+    source: Compound
+  ): Promise<void> {
+    if (!this.request.options.keepTileEntities) {
+      return;
+    }
     const index = (y * this.length + z) * this.width + x;
-    if (x < 0 || y < 0 || z < 0 || x >= this.width || y >= this.height || z >= this.length) return;
+    if (
+      x < 0 ||
+      y < 0 ||
+      z < 0 ||
+      x >= this.width ||
+      y >= this.height ||
+      z >= this.length
+    ) {
+      return;
+    }
     const block = this.specials.take(index);
-    const resolved = block === undefined ? undefined : this.palette.resolved[block];
+    const resolved =
+      block === undefined ? undefined : this.palette.resolved[block];
     if (!resolved) {
       this.recordOrphan(source);
       return;
@@ -391,15 +479,35 @@ class Job {
 
   // A source block entity with nowhere to go, because of what its block turned into.
   recordOrphan(source: Compound | undefined): void {
-    const name = asString(child(source, "id")) ?? asString(child(source, "Id")) ?? "block entity";
-    if (isWorthReporting(name)) this.tileCtx.orphans.set(name, (this.tileCtx.orphans.get(name) ?? 0) + 1);
+    const name =
+      asString(child(source, "id")) ??
+      asString(child(source, "Id")) ??
+      "block entity";
+    if (isWorthReporting(name)) {
+      this.tileCtx.orphans.set(name, (this.tileCtx.orphans.get(name) ?? 0) + 1);
+    }
   }
 
-  async writeTile(x: number, y: number, z: number, source: Compound | null, block: Resolved): Promise<void> {
+  async writeTile(
+    x: number,
+    y: number,
+    z: number,
+    source: Compound | null,
+    block: Resolved
+  ): Promise<void> {
     const output = await this.ensureOutput();
     const [originX, originZ] = output.tileOrigin(x, z);
-    const tag = translateTile(source, block, x - originX, y, z - originZ, this.tileCtx);
-    if (!tag) return;
+    const tag = translateTile(
+      source,
+      block,
+      x - originX,
+      y,
+      z - originZ,
+      this.tileCtx
+    );
+    if (!tag) {
+      return;
+    }
     await output.writeTile(x, z, tag);
     this.tilesWritten += 1;
   }
@@ -407,10 +515,14 @@ class Job {
   // Tile-bearing blocks the source had no data for, such as flower pots and note blocks
   // whose contents are part of the block state in modern versions.
   async writeRemainingTiles(): Promise<void> {
-    if (!this.request.options.keepTileEntities) return;
+    if (!this.request.options.keepTileEntities) {
+      return;
+    }
     for (const [index, block] of this.specials.remaining()) {
       const resolved = this.palette.resolved[block];
-      if (!resolved) continue;
+      if (!resolved) {
+        continue;
+      }
       const [x, y, z] = this.positionOf(index);
       await this.writeTile(x, y, z, null, resolved);
     }
@@ -418,18 +530,35 @@ class Job {
 
   // WorldEdit stores entities in world coordinates while the Sponge spec and others use
   // coordinates relative to the schematic. Whichever puts it inside the box must be right.
-  relativePosition(position: number[], min: readonly number[]): [number, number, number] {
+  relativePosition(
+    position: number[],
+    min: readonly number[]
+  ): [number, number, number] {
     const [x, y, z] = position as [number, number, number];
     const inside = (a: number, b: number, c: number): boolean =>
-      a >= 0 && b >= 0 && c >= 0 && a <= this.width && b <= this.height && c <= this.length;
-    const shifted: [number, number, number] = [x - min[0]!, y - min[1]!, z - min[2]!];
+      a >= 0 &&
+      b >= 0 &&
+      c >= 0 &&
+      a <= this.width &&
+      b <= this.height &&
+      c <= this.length;
+    const shifted: [number, number, number] = [
+      x - min[0]!,
+      y - min[1]!,
+      z - min[2]!,
+    ];
     return inside(...shifted) || !inside(x, y, z) ? shifted : [x, y, z];
   }
 
   // An entity at `relative`, a position within the output. Absolute coordinates are what
   // WorldEdit expects next to a WEOrigin, so that's what gets stored.
-  async writeEntity(source: Compound, relative: [number, number, number]): Promise<void> {
-    if (!this.request.options.keepEntities) return;
+  async writeEntity(
+    source: Compound,
+    relative: [number, number, number]
+  ): Promise<void> {
+    if (!this.request.options.keepEntities) {
+      return;
+    }
     const output = await this.ensureOutput();
     const absolute: [number, number, number] = [
       relative[0] + this.origin.originX,
@@ -437,11 +566,13 @@ class Job {
       relative[2] + this.origin.originZ,
     ];
     const tag = translateEntity(source, absolute, {
-      resolver: this.resolver,
       dropped: this.tileCtx.dropped,
       droppedEntities: this.droppedEntities,
+      resolver: this.resolver,
     });
-    if (!tag) return;
+    if (!tag) {
+      return;
+    }
     await output.writeEntity(relative[0], relative[2], tag);
     this.entitiesWritten += 1;
   }
@@ -449,29 +580,33 @@ class Job {
   async finish(info: FileInfo, startedAt: number): Promise<ConvertReport> {
     const output = await this.ensureOutput();
     if (output.written !== this.volume) {
-      throw new Error(`The file ended early: found ${output.written} of ${this.volume} blocks`);
+      throw new Error(
+        `The file ended early: found ${output.written} of ${this.volume} blocks`
+      );
     }
     this.request.onProgress?.({
-      phase: "finishing",
-      fraction: 0,
       blocksDone: this.volume,
-      volume: this.volume,
       blocksPerSecond: 0,
+      fraction: 0,
+      phase: "finishing",
+      volume: this.volume,
     });
     const outputs = await output.finish(this.origin, (index, total) => {
       this.request.onProgress?.({
-        phase: "finishing",
-        fraction: index / total,
         blocksDone: this.volume,
-        volume: this.volume,
         blocksPerSecond: 0,
+        fraction: index / total,
+        phase: "finishing",
+        volume: this.volume,
       });
     });
 
     // Indices that had no palette entry were written as air, which is worth owning up to.
     for (let index = 0; index < this.palette.counts.length; index++) {
       const count = this.palette.counts[index]!;
-      if (count > 0 && !this.palette.resolved[index]) this.invalid += count;
+      if (count > 0 && !this.palette.resolved[index]) {
+        this.invalid += count;
+      }
     }
 
     const records = collectBlockRecords(this.palette);
@@ -480,43 +615,68 @@ class Job {
       target: displayName18(record.id, record.data),
     }));
 
-    const warn = (message: string, entries: Map<string, number>, limit = 6): void => {
-      if (entries.size === 0) return;
-      const total = [...entries.values()].reduce((sum, value) => sum + value, 0);
+    const warn = (
+      message: string,
+      entries: Map<string, number>,
+      limit = 6
+    ): void => {
+      if (entries.size === 0) {
+        return;
+      }
+      const total = [...entries.values()].reduce(
+        (sum, value) => sum + value,
+        0
+      );
       const top = [...entries.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, limit)
         .map(([name, count]) => `${name.replace("minecraft:", "")} ×${count}`)
         .join(", ");
-      const more = entries.size > limit ? `, and ${entries.size - limit} more` : "";
-      this.warnings.push(`${message} (${total.toLocaleString("en-US")}): ${top}${more}.`);
+      const more =
+        entries.size > limit ? `, and ${entries.size - limit} more` : "";
+      this.warnings.push(
+        `${message} (${total.toLocaleString("en-US")}): ${top}${more}.`
+      );
     };
-    warn("Block entities with no 1.8 equivalent were dropped", this.tileCtx.orphans);
+    warn(
+      "Block entities with no 1.8 equivalent were dropped",
+      this.tileCtx.orphans
+    );
     warn("Items with no 1.8 equivalent were removed", this.tileCtx.dropped);
     warn("Entities with no 1.8 equivalent were dropped", this.droppedEntities);
     if (this.invalid > 0) {
       this.warnings.push(
-        `${this.invalid.toLocaleString("en-US")} blocks pointed outside the palette and were written as air. The source file may be damaged.`,
+        `${this.invalid.toLocaleString("en-US")} blocks pointed outside the palette and were written as air. The source file may be damaged.`
       );
     }
     const unmapped = blocks.filter((row) => row.kind === "unmapped");
     if (unmapped.length > 0) {
-      const names = unmapped.slice(0, 6).map((row) => row.name).join(", ");
-      const more = unmapped.length > 6 ? `, and ${unmapped.length - 6} more` : "";
-      const types = unmapped.length === 1 ? "1 unknown block type" : `${unmapped.length} unknown block types`;
+      const names = unmapped
+        .slice(0, 6)
+        .map((row) => row.name)
+        .join(", ");
+      const more =
+        unmapped.length > 6 ? `, and ${unmapped.length - 6} more` : "";
+      const types =
+        unmapped.length === 1
+          ? "1 unknown block type"
+          : `${unmapped.length} unknown block types`;
       this.warnings.push(`${types} used the fallback block: ${names}${more}.`);
     }
 
     return {
-      info,
-      outputs,
       blocks,
-      warnings: this.warnings,
       durationMs: Date.now() - startedAt,
-      nonAirBlocks: blocks.reduce((sum, row) => (row.id === 0 ? sum : sum + row.count), 0),
-      tileEntitiesWritten: this.tilesWritten,
       entitiesWritten: this.entitiesWritten,
+      info,
+      nonAirBlocks: blocks.reduce(
+        (sum, row) => (row.id === 0 ? sum : sum + row.count),
+        0
+      ),
+      outputs,
       split: outputs.length > 1,
+      tileEntitiesWritten: this.tilesWritten,
+      warnings: this.warnings,
     };
   }
 }
@@ -526,11 +686,19 @@ class Job {
 // quietly becoming air.
 function stateFromCompound(entry: Compound | undefined): string {
   const name = asString(child(entry, "Name")) ?? asString(child(entry, "id"));
-  if (!name) return "unknown:malformed_palette_entry";
-  const properties = asCompound(child(entry, "Properties")) ?? asCompound(child(entry, "properties"));
-  if (!properties || properties.size === 0) return name;
+  if (!name) {
+    return "unknown:malformed_palette_entry";
+  }
+  const properties =
+    asCompound(child(entry, "Properties")) ??
+    asCompound(child(entry, "properties"));
+  if (!properties || properties.size === 0) {
+    return name;
+  }
   const parts: string[] = [];
-  for (const [key, value] of properties) parts.push(`${key}=${asString(value) ?? asNumber(value) ?? ""}`);
+  for (const [key, value] of properties) {
+    parts.push(`${key}=${asString(value) ?? asNumber(value) ?? ""}`);
+  }
   return `${name}[${parts.join(",")}]`;
 }
 
@@ -557,24 +725,28 @@ async function convertSponge(job: Job): Promise<void> {
     const own = offset ?? [0, 0, 0];
     if (version >= 3) {
       const origin = weOrigin ?? [0, 0, 0];
-      const min: [number, number, number] = [origin[0] + own[0], origin[1] + own[1], origin[2] + own[2]];
+      const min: [number, number, number] = [
+        origin[0] + own[0],
+        origin[1] + own[1],
+        origin[2] + own[2],
+      ];
       job.origin = {
-        originX: min[0],
-        originY: min[1],
-        originZ: min[2],
         offsetX: own[0],
         offsetY: own[1],
         offsetZ: own[2],
+        originX: min[0],
+        originY: min[1],
+        originZ: min[2],
       };
       return min;
     }
     job.origin = {
-      originX: own[0],
-      originY: own[1],
-      originZ: own[2],
       offsetX: weOffset[0] ?? 0,
       offsetY: weOffset[1] ?? 0,
       offsetZ: weOffset[2] ?? 0,
+      originX: own[0],
+      originY: own[1],
+      originZ: own[2],
     };
     return own;
   };
@@ -583,7 +755,9 @@ async function convertSponge(job: Job): Promise<void> {
     kind: "value",
     use: (tag) => {
       const value = asNumber(tag);
-      if (value !== undefined) use(value);
+      if (value !== undefined) {
+        use(value);
+      }
     },
   });
 
@@ -602,16 +776,24 @@ async function convertSponge(job: Job): Promise<void> {
     let entitiesThisPass = false;
     try {
       await walk(source.reader, (rawPath, type) => {
-        const path = rawPath.startsWith("/Schematic") ? rawPath.slice(10) : rawPath;
+        const path = rawPath.startsWith("/Schematic")
+          ? rawPath.slice(10)
+          : rawPath;
         switch (path) {
           case "":
             return type === TAG.Compound ? ENTER : SKIP;
           case "/Width":
-            return pass === 0 ? number((value) => (width = value & 0xffff)) : SKIP;
+            return pass === 0
+              ? number((value) => (width = value & 0xff_ff))
+              : SKIP;
           case "/Height":
-            return pass === 0 ? number((value) => (height = value & 0xffff)) : SKIP;
+            return pass === 0
+              ? number((value) => (height = value & 0xff_ff))
+              : SKIP;
           case "/Length":
-            return pass === 0 ? number((value) => (length = value & 0xffff)) : SKIP;
+            return pass === 0
+              ? number((value) => (length = value & 0xff_ff))
+              : SKIP;
           case "/Version":
             return pass === 0
               ? number((value) => {
@@ -635,32 +817,52 @@ async function convertSponge(job: Job): Promise<void> {
           case "/Metadata/WEOffsetZ":
             return number((value) => (weOffset[2] = value));
           case "/Metadata/WorldEdit/Origin":
-            return { kind: "value", use: (tag) => void (weOrigin = asTriple(tag)) };
+            return {
+              kind: "value",
+              use: (tag) => void (weOrigin = asTriple(tag)),
+            };
           case "/Blocks":
             return type === TAG.Compound ? ENTER : SKIP;
           case "/Palette":
           case "/Blocks/Palette":
-            if (paletteLoaded) return SKIP;
+            if (paletteLoaded) {
+              return SKIP;
+            }
             return {
               kind: "value",
               use: (tag) => {
                 const entries = asCompound(tag);
-                if (!entries) throw new Error("The schematic's palette is malformed");
+                if (!entries) {
+                  throw new Error("The schematic's palette is malformed");
+                }
                 let max = 0;
-                for (const value of entries.values()) max = Math.max(max, asNumber(value) ?? 0);
+                for (const value of entries.values()) {
+                  max = Math.max(max, asNumber(value) ?? 0);
+                }
                 job.palette.ensure(max + 1);
                 for (const [state, value] of entries) {
                   const index = asNumber(value);
-                  if (index !== undefined) job.palette.set(index, job.resolver.resolveState(state));
+                  if (index !== undefined) {
+                    job.palette.set(index, job.resolver.resolveState(state));
+                  }
                 }
-                if (!job.request.options.keepTileEntities) job.palette.special.fill(0);
+                if (!job.request.options.keepTileEntities) {
+                  job.palette.special.fill(0);
+                }
                 paletteLoaded = true;
               },
             };
           case "/BlockData":
           case "/Blocks/Data":
-            if (dataDone) return SKIP;
-            if (!paletteLoaded || width === undefined || height === undefined || length === undefined) {
+            if (dataDone) {
+              return SKIP;
+            }
+            if (
+              !paletteLoaded ||
+              width === undefined ||
+              height === undefined ||
+              length === undefined
+            ) {
               return SKIP;
             }
             return {
@@ -678,47 +880,72 @@ async function convertSponge(job: Job): Promise<void> {
           case "/BlockEntities":
           case "/TileEntities":
           case "/Blocks/BlockEntities":
-            if (tilesDone) return SKIP;
+            if (tilesDone) {
+              return SKIP;
+            }
             tilesSeen = true;
-            if (!dataDone) return SKIP;
+            if (!dataDone) {
+              return SKIP;
+            }
             tilesThisPass = true;
             return {
               kind: "each",
               use: async (element) => {
                 const entry = asCompound(element);
                 const position = asTriple(child(entry, "Pos"));
-                if (!entry || !position) return;
+                if (!(entry && position)) {
+                  return;
+                }
                 // Version 3 nests the block entity's own tags under Data.
                 const data = asCompound(child(entry, "Data"));
                 const tile = data ?? entry;
                 if (data && !tile.has("id")) {
                   const id = child(entry, "Id");
-                  if (id) tile.set("id", id);
+                  if (id) {
+                    tile.set("id", id);
+                  }
                 }
-                await job.sourceTile(position[0], position[1], position[2], tile);
+                await job.sourceTile(
+                  position[0],
+                  position[1],
+                  position[2],
+                  tile
+                );
               },
             };
           case "/Entities":
-            if (entitiesDone) return SKIP;
+            if (entitiesDone) {
+              return SKIP;
+            }
             entitiesSeen = true;
-            if (!canPlaceEntities(pass)) return SKIP;
+            if (!canPlaceEntities(pass)) {
+              return SKIP;
+            }
             entitiesThisPass = true;
             return {
               kind: "each",
               use: async (element) => {
                 const entry = asCompound(element);
                 const data = asCompound(child(entry, "Data")) ?? entry;
-                const position = asList(child(entry, "Pos"))?.map((value) => asNumber(value) ?? 0);
-                if (!entry || !data || !position || position.length < 3) return;
+                const position = asList(child(entry, "Pos"))?.map(
+                  (value) => asNumber(value) ?? 0
+                );
+                if (!(entry && data && position) || position.length < 3) {
+                  return;
+                }
                 job.setDimensions(width!, height!, length!);
                 const min = applyOrigin();
                 const relative = job.relativePosition(position, min);
                 const copy = new Map(data);
                 if (!copy.has("id")) {
                   const id = child(entry, "Id");
-                  if (id) copy.set("id", id);
+                  if (id) {
+                    copy.set("id", id);
+                  }
                 }
-                if (!copy.has("Pos")) copy.set("Pos", child(entry, "Pos")!);
+                if (!copy.has("Pos")) {
+                  copy.set("Pos", child(entry, "Pos")!);
+                }
                 await job.writeEntity(copy, relative);
               },
             };
@@ -731,14 +958,30 @@ async function convertSponge(job: Job): Promise<void> {
     } finally {
       source.close();
     }
-    if (tilesThisPass) tilesDone = true;
-    if (entitiesThisPass) entitiesDone = true;
-    if (dataDone && (tilesDone || !tilesSeen) && (entitiesDone || !entitiesSeen)) break;
-    if (!dataDone && pass > 0 && !paletteLoaded) break;
+    if (tilesThisPass) {
+      tilesDone = true;
+    }
+    if (entitiesThisPass) {
+      entitiesDone = true;
+    }
+    if (
+      dataDone &&
+      (tilesDone || !tilesSeen) &&
+      (entitiesDone || !entitiesSeen)
+    ) {
+      break;
+    }
+    if (!dataDone && pass > 0 && !paletteLoaded) {
+      break;
+    }
   }
 
-  if (!paletteLoaded) throw new Error("This schematic has no block palette");
-  if (!dataDone) throw new Error("This schematic has no block data");
+  if (!paletteLoaded) {
+    throw new Error("This schematic has no block palette");
+  }
+  if (!dataDone) {
+    throw new Error("This schematic has no block data");
+  }
   applyOrigin();
   await job.writeRemainingTiles();
 }
@@ -746,17 +989,17 @@ async function convertSponge(job: Job): Promise<void> {
 // ---- Litematica
 
 interface Region {
+  dataDone: boolean;
+  entitiesDone: boolean;
+  hasEntities: boolean;
+  hasTiles: boolean;
   name: string;
+  paletteBase: number;
+  paletteLoaded: boolean;
+  paletteSize: number;
   position?: [number, number, number];
   size?: [number, number, number];
-  paletteBase: number;
-  paletteSize: number;
-  paletteLoaded: boolean;
-  dataDone: boolean;
   tilesDone: boolean;
-  entitiesDone: boolean;
-  hasTiles: boolean;
-  hasEntities: boolean;
 }
 
 const xyz = (tag: NbtTag | undefined): [number, number, number] | undefined => {
@@ -764,7 +1007,9 @@ const xyz = (tag: NbtTag | undefined): [number, number, number] | undefined => {
   const x = asNumber(child(compound, "x"));
   const y = asNumber(child(compound, "y"));
   const z = asNumber(child(compound, "z"));
-  return x === undefined || y === undefined || z === undefined ? undefined : [x, y, z];
+  return x === undefined || y === undefined || z === undefined
+    ? undefined
+    : [x, y, z];
 };
 
 const regionMin = (region: Region, axis: 0 | 1 | 2): number => {
@@ -787,17 +1032,21 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
   const regionOf = (name: string): Region => {
     let region = regions.get(name);
     if (!region) {
-      if (singleRegion && regions.size > 0) throw new Error("This litematic has more regions than its metadata says");
+      if (singleRegion && regions.size > 0) {
+        throw new Error(
+          "This litematic has more regions than its metadata says"
+        );
+      }
       region = {
+        dataDone: false,
+        entitiesDone: false,
+        hasEntities: false,
+        hasTiles: false,
         name,
         paletteBase: 0,
-        paletteSize: 0,
         paletteLoaded: false,
-        dataDone: false,
+        paletteSize: 0,
         tilesDone: false,
-        entitiesDone: false,
-        hasTiles: false,
-        hasEntities: false,
       };
       regions.set(name, region);
     }
@@ -805,14 +1054,16 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
   };
 
   const computeBounds = (): void => {
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let maxZ = -Infinity;
-    minX = Infinity;
-    minY = Infinity;
-    minZ = Infinity;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    let maxZ = Number.NEGATIVE_INFINITY;
+    minX = Number.POSITIVE_INFINITY;
+    minY = Number.POSITIVE_INFINITY;
+    minZ = Number.POSITIVE_INFINITY;
     for (const region of regions.values()) {
-      if (!region.position || !region.size) throw new Error(`Region "${region.name}" has no size`);
+      if (!(region.position && region.size)) {
+        throw new Error(`Region "${region.name}" has no size`);
+      }
       const [sx, sy, sz] = region.size;
       const x = regionMin(region, 0);
       const y = regionMin(region, 1);
@@ -828,12 +1079,20 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
     boundsReady = true;
   };
 
-  const allData = (): boolean => [...regions.values()].every((region) => region.dataDone);
+  const allData = (): boolean =>
+    [...regions.values()].every((region) => region.dataDone);
 
-  const decodeRegion = async (region: Region, reader: NbtReader, longs: number): Promise<void> => {
+  const decodeRegion = async (
+    region: Region,
+    reader: NbtReader,
+    longs: number
+  ): Promise<void> => {
     const [sx, sy, sz] = region.size!.map(Math.abs) as [number, number, number];
     const entries = sx * sy * sz;
-    const bits = Math.max(2, Math.ceil(Math.log2(Math.max(2, region.paletteSize))));
+    const bits = Math.max(
+      2,
+      Math.ceil(Math.log2(Math.max(2, region.paletteSize)))
+    );
     await job.ensureOutput();
     const base = region.paletteBase;
 
@@ -843,7 +1102,10 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
       target = job.target();
     } else {
       if (!canvas) {
-        canvas = new BlockCanvas(job.volume, join(job.request.tempDir, "canvas.bin"));
+        canvas = new BlockCanvas(
+          job.volume,
+          join(job.request.tempDir, "canvas.bin")
+        );
       }
       const active = canvas;
       const dx = regionMin(region, 0) - minX;
@@ -853,10 +1115,14 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
       let y = 0;
       let z = 0;
       target = {
-        write: async (ids, data, count) => {
+        write: (ids, data, count) => {
           for (let i = 0; i < count; i++) {
             if (ids[i] !== 0) {
-              active.set(((y + dy) * job.length + (z + dz)) * job.width + x + dx, ids[i]!, data[i]!);
+              active.set(
+                ((y + dy) * job.length + (z + dz)) * job.width + x + dx,
+                ids[i]!,
+                data[i]!
+              );
             }
             x += 1;
             if (x === sx) {
@@ -868,6 +1134,7 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
               }
             }
           }
+          return Promise.resolve();
         },
       };
       specials = {
@@ -876,40 +1143,61 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
           const rest = position - ry * sx * sz;
           const rz = Math.floor(rest / sx);
           const rx = rest - rz * sx;
-          job.specials.push(((ry + dy) * job.length + (rz + dz)) * job.width + rx + dx, block);
+          job.specials.push(
+            ((ry + dy) * job.length + (rz + dz)) * job.width + rx + dx,
+            block
+          );
         },
       };
     }
 
     const state = {
       ...job.decodeState(target),
-      specials,
       paletteBase: base,
       paletteCount: region.paletteSize,
+      specials,
     };
     await decodePacked(reader, longs, bits, entries, state);
     job.invalid += state.invalid;
     region.dataDone = true;
-    if (allData()) job.specials.finalize();
+    if (allData()) {
+      job.specials.finalize();
+    }
   };
 
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     const source = await job.open();
     try {
       await walk(source.reader, (path) => {
-        if (pass === 0) job.readingProgress();
-        if (path === "/Regions") return ENTER;
-        if (!path.startsWith("/Regions/")) return SKIP;
+        if (pass === 0) {
+          job.readingProgress();
+        }
+        if (path === "/Regions") {
+          return ENTER;
+        }
+        if (!path.startsWith("/Regions/")) {
+          return SKIP;
+        }
         const parts = path.slice(9).split("/");
         const region = regionOf(parts[0]!);
-        if (parts.length === 1) return ENTER;
+        if (parts.length === 1) {
+          return ENTER;
+        }
         switch (parts[1]) {
           case "Position":
-            return { kind: "value", use: (tag) => void (region.position = xyz(tag)) };
+            return {
+              kind: "value",
+              use: (tag) => void (region.position = xyz(tag)),
+            };
           case "Size":
-            return { kind: "value", use: (tag) => void (region.size = xyz(tag)) };
+            return {
+              kind: "value",
+              use: (tag) => void (region.size = xyz(tag)),
+            };
           case "BlockStatePalette":
-            if (region.paletteLoaded) return SKIP;
+            if (region.paletteLoaded) {
+              return SKIP;
+            }
             return {
               kind: "value",
               use: (tag) => {
@@ -919,18 +1207,29 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
                 job.palette.ensure(paletteEnd + entries.length);
                 for (const [index, entry] of entries.entries()) {
                   const state = stateFromCompound(asCompound(entry));
-                  job.palette.set(region.paletteBase + index, job.resolver.resolveState(state));
+                  job.palette.set(
+                    region.paletteBase + index,
+                    job.resolver.resolveState(state)
+                  );
                 }
-                if (!job.request.options.keepTileEntities) job.palette.special.fill(0);
+                if (!job.request.options.keepTileEntities) {
+                  job.palette.special.fill(0);
+                }
                 paletteEnd += entries.length;
                 region.paletteLoaded = true;
               },
             };
           case "BlockStates": {
-            if (region.dataDone) return SKIP;
-            if (!region.paletteLoaded || !region.size || !region.position) return SKIP;
+            if (region.dataDone) {
+              return SKIP;
+            }
+            if (!(region.paletteLoaded && region.size && region.position)) {
+              return SKIP;
+            }
             if (!boundsReady) {
-              if (!singleRegion) return SKIP;
+              if (!singleRegion) {
+                return SKIP;
+              }
               computeBounds();
               directRegion = region;
             }
@@ -941,7 +1240,9 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
           }
           case "TileEntities":
             region.hasTiles = true;
-            if (region.tilesDone || !boundsReady || !allData()) return SKIP;
+            if (region.tilesDone || !boundsReady || !allData()) {
+              return SKIP;
+            }
             region.tilesDone = true;
             return {
               kind: "each",
@@ -950,25 +1251,38 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
                 const x = asNumber(child(entry, "x"));
                 const y = asNumber(child(entry, "y"));
                 const z = asNumber(child(entry, "z"));
-                if (!entry || x === undefined || y === undefined || z === undefined) return;
+                if (
+                  !entry ||
+                  x === undefined ||
+                  y === undefined ||
+                  z === undefined
+                ) {
+                  return;
+                }
                 await job.sourceTile(
                   x + regionMin(region, 0) - minX,
                   y + regionMin(region, 1) - minY,
                   z + regionMin(region, 2) - minZ,
-                  entry,
+                  entry
                 );
               },
             };
           case "Entities":
             region.hasEntities = true;
-            if (region.entitiesDone || !boundsReady) return SKIP;
+            if (region.entitiesDone || !boundsReady) {
+              return SKIP;
+            }
             region.entitiesDone = true;
             return {
               kind: "each",
               use: async (element) => {
                 const entry = asCompound(element);
-                const position = asList(child(entry, "Pos"))?.map((value) => asNumber(value) ?? 0);
-                if (!entry || !position || position.length < 3) return;
+                const position = asList(child(entry, "Pos"))?.map(
+                  (value) => asNumber(value) ?? 0
+                );
+                if (!(entry && position) || position.length < 3) {
+                  return;
+                }
                 await job.writeEntity(entry, [
                   position[0]! + region.position![0] - minX,
                   position[1]! + region.position![1] - minY,
@@ -984,15 +1298,25 @@ async function convertLitematic(job: Job, info: FileInfo): Promise<void> {
       source.close();
     }
 
-    if (regions.size === 0) throw new Error("This litematic has no regions");
-    if (!boundsReady) computeBounds();
+    if (regions.size === 0) {
+      throw new Error("This litematic has no regions");
+    }
+    if (!boundsReady) {
+      computeBounds();
+    }
     const pendingLists = [...regions.values()].some(
-      (region) => (region.hasTiles && !region.tilesDone) || (region.hasEntities && !region.entitiesDone),
+      (region) =>
+        (region.hasTiles && !region.tilesDone) ||
+        (region.hasEntities && !region.entitiesDone)
     );
-    if (allData() && !pendingLists) break;
+    if (allData() && !pendingLists) {
+      break;
+    }
   }
 
-  if (!allData()) throw new Error("This litematic is missing block data for a region");
+  if (!allData()) {
+    throw new Error("This litematic is missing block data for a region");
+  }
 
   if (canvas) {
     const active = canvas as BlockCanvas;
@@ -1015,10 +1339,15 @@ async function convertStructure(job: Job): Promise<void> {
   let canvas: BlockCanvas | null = null;
 
   const setup = async (): Promise<BlockCanvas> => {
-    if (canvas) return canvas;
+    if (canvas) {
+      return canvas;
+    }
     job.setDimensions(size![0], size![1], size![2]);
     await job.ensureOutput();
-    canvas = new BlockCanvas(job.volume, join(job.request.tempDir, "canvas.bin"));
+    canvas = new BlockCanvas(
+      job.volume,
+      join(job.request.tempDir, "canvas.bin")
+    );
     return canvas;
   };
 
@@ -1042,13 +1371,22 @@ async function convertStructure(job: Job): Promise<void> {
           case "/size":
             return { kind: "value", use: (tag) => void (size = asTriple(tag)) };
           case "/palette":
-            if (paletteLoaded) return SKIP;
+            if (paletteLoaded) {
+              return SKIP;
+            }
             return { kind: "value", use: (tag) => loadPalette(asList(tag)) };
           case "/palettes":
-            if (paletteLoaded) return SKIP;
-            return { kind: "value", use: (tag) => loadPalette(asList(asList(tag)?.[0])) };
+            if (paletteLoaded) {
+              return SKIP;
+            }
+            return {
+              kind: "value",
+              use: (tag) => loadPalette(asList(asList(tag)?.[0])),
+            };
           case "/blocks":
-            if (blocksDone || !paletteLoaded || !size) return SKIP;
+            if (blocksDone || !paletteLoaded || !size) {
+              return SKIP;
+            }
             blocksThisPass = true;
             return {
               kind: "each",
@@ -1058,36 +1396,73 @@ async function convertStructure(job: Job): Promise<void> {
                 const entry = asCompound(element);
                 const state = asNumber(child(entry, "state"));
                 const position = asTriple(child(entry, "pos"));
-                if (state === undefined || !position) return;
+                if (state === undefined || !position) {
+                  return;
+                }
                 const [x, y, z] = position;
-                if (x < 0 || y < 0 || z < 0 || x >= job.width || y >= job.height || z >= job.length) return;
+                if (
+                  x < 0 ||
+                  y < 0 ||
+                  z < 0 ||
+                  x >= job.width ||
+                  y >= job.height ||
+                  z >= job.length
+                ) {
+                  return;
+                }
                 const block = job.palette.resolved[state];
                 if (!block) {
                   job.invalid += 1;
                   return;
                 }
                 job.palette.counts[state]! += 1;
-                target.set((y * job.length + z) * job.width + x, block.id, block.data);
-                if (job.palette.special[state] === 1 && job.request.options.keepTileEntities) {
-                  await job.writeTile(x, y, z, asCompound(child(entry, "nbt")) ?? null, block);
-                } else if (entry?.has("nbt") && job.request.options.keepTileEntities) {
+                target.set(
+                  (y * job.length + z) * job.width + x,
+                  block.id,
+                  block.data
+                );
+                if (
+                  job.palette.special[state] === 1 &&
+                  job.request.options.keepTileEntities
+                ) {
+                  await job.writeTile(
+                    x,
+                    y,
+                    z,
+                    asCompound(child(entry, "nbt")) ?? null,
+                    block
+                  );
+                } else if (
+                  entry?.has("nbt") &&
+                  job.request.options.keepTileEntities
+                ) {
                   job.recordOrphan(asCompound(child(entry, "nbt")));
                 }
               },
             };
           case "/entities":
             hasEntities = true;
-            if (entitiesDone || !size) return SKIP;
+            if (entitiesDone || !size) {
+              return SKIP;
+            }
             entitiesThisPass = true;
             return {
               kind: "each",
               use: async (element) => {
                 await setup();
                 const entry = asCompound(element);
-                const position = asList(child(entry, "pos"))?.map((value) => asNumber(value) ?? 0);
+                const position = asList(child(entry, "pos"))?.map(
+                  (value) => asNumber(value) ?? 0
+                );
                 const data = asCompound(child(entry, "nbt"));
-                if (!data || !position || position.length < 3) return;
-                await job.writeEntity(data, [position[0]!, position[1]!, position[2]!]);
+                if (!(data && position) || position.length < 3) {
+                  return;
+                }
+                await job.writeEntity(data, [
+                  position[0]!,
+                  position[1]!,
+                  position[2]!,
+                ]);
               },
             };
           default:
@@ -1097,13 +1472,23 @@ async function convertStructure(job: Job): Promise<void> {
     } finally {
       source.close();
     }
-    if (!size) throw new Error("This structure file has no size");
-    if (blocksThisPass) blocksDone = true;
-    if (entitiesThisPass) entitiesDone = true;
-    if (blocksDone && (entitiesDone || !hasEntities)) break;
+    if (!size) {
+      throw new Error("This structure file has no size");
+    }
+    if (blocksThisPass) {
+      blocksDone = true;
+    }
+    if (entitiesThisPass) {
+      entitiesDone = true;
+    }
+    if (blocksDone && (entitiesDone || !hasEntities)) {
+      break;
+    }
   }
 
-  if (!blocksDone) throw new Error("This structure file has no blocks or palette");
+  if (!blocksDone) {
+    throw new Error("This structure file has no blocks or palette");
+  }
   const finished = await setup();
   await finished.drain(async (ids, data, count) => {
     await job.output!.writeRun(ids, data, count);
@@ -1128,7 +1513,9 @@ async function convertLegacy(job: Job): Promise<void> {
     kind: "value",
     use: (tag) => {
       const value = asNumber(tag);
-      if (value !== undefined) use(value);
+      if (value !== undefined) {
+        use(value);
+      }
     },
   });
 
@@ -1140,12 +1527,18 @@ async function convertLegacy(job: Job): Promise<void> {
       const out = createWriteStream(path, { highWaterMark: CHUNK_SIZE });
       let remaining = byteLength;
       while (remaining > 0) {
-        if (reader.end === reader.pos) await reader.ensure(1);
+        if (reader.end === reader.pos) {
+          await reader.ensure(1);
+        }
         const take = Math.min(remaining, reader.end - reader.pos);
-        const chunk = Buffer.from(reader.buf.subarray(reader.pos, reader.pos + take));
+        const chunk = Buffer.from(
+          reader.buf.subarray(reader.pos, reader.pos + take)
+        );
         reader.pos += take;
         remaining -= take;
-        if (!out.write(chunk)) await new Promise<void>((resolve) => out.once("drain", resolve));
+        if (!out.write(chunk)) {
+          await new Promise<void>((resolve) => out.once("drain", resolve));
+        }
         job.readingProgress();
       }
       await new Promise<void>((resolve, reject) => {
@@ -1159,16 +1552,18 @@ async function convertLegacy(job: Job): Promise<void> {
   const first = await job.open();
   try {
     await walk(first.reader, (rawPath, type) => {
-      const path = rawPath.startsWith("/Schematic") ? rawPath.slice(10) : rawPath;
-      switch (path) {
+      const tagPath = rawPath.startsWith("/Schematic")
+        ? rawPath.slice(10)
+        : rawPath;
+      switch (tagPath) {
         case "":
           return type === TAG.Compound ? ENTER : SKIP;
         case "/Width":
-          return number((value) => (width = value & 0xffff));
+          return number((value) => (width = value & 0xff_ff));
         case "/Height":
-          return number((value) => (height = value & 0xffff));
+          return number((value) => (height = value & 0xff_ff));
         case "/Length":
-          return number((value) => (length = value & 0xffff));
+          return number((value) => (length = value & 0xff_ff));
         case "/WEOriginX":
           return number((value) => (origin.originX = value));
         case "/WEOriginY":
@@ -1206,15 +1601,17 @@ async function convertLegacy(job: Job): Promise<void> {
   }
   const blocksPath = spills.get("Blocks");
   const dataPath = spills.get("Data");
-  if (!blocksPath || !dataPath) throw new Error("This schematic has no block data");
+  if (!(blocksPath && dataPath)) {
+    throw new Error("This schematic has no block data");
+  }
 
   job.setDimensions(width, height, length);
   job.origin = { ...job.origin, ...origin } as WorldEditOrigin;
   const output = await job.ensureOutput();
 
   const palette = job.palette;
-  palette.ensure(65536);
-  const known = new Uint8Array(65536);
+  palette.ensure(65_536);
+  const known = new Uint8Array(65_536);
   const keepTiles = job.request.options.keepTileEntities;
 
   const inBlocks = await open(blocksPath, "r");
@@ -1231,12 +1628,22 @@ async function convertLegacy(job: Job): Promise<void> {
     while (index < job.volume) {
       const want = Math.min(CHUNK_SIZE, job.volume - index);
       const { bytesRead } = await inBlocks.read(blockChunk, 0, want, null);
-      if (bytesRead === 0) break;
-      const dataRead = (await inData.read(dataChunk, 0, bytesRead, index)).bytesRead;
-      if (dataRead < bytesRead) dataChunk.fill(0, dataRead, bytesRead);
+      if (bytesRead === 0) {
+        break;
+      }
+      const dataRead = (await inData.read(dataChunk, 0, bytesRead, index))
+        .bytesRead;
+      if (dataRead < bytesRead) {
+        dataChunk.fill(0, dataRead, bytesRead);
+      }
       if (inAdd) {
         addChunk.fill(0);
-        await inAdd.read(addChunk, 0, (bytesRead >> 1) + 1, Math.floor(index / 2));
+        await inAdd.read(
+          addChunk,
+          0,
+          (bytesRead >> 1) + 1,
+          Math.floor(index / 2)
+        );
       }
       const addBase = Math.floor(index / 2);
       for (let i = 0; i < bytesRead; i++) {
@@ -1244,30 +1651,41 @@ async function convertLegacy(job: Job): Promise<void> {
         if (inAdd) {
           const absolute = index + i;
           const nibble = addChunk[(absolute >> 1) - addBase]!;
-          id |= (absolute & 1) === 0 ? (nibble & 0x0f) << 8 : (nibble & 0xf0) << 4;
+          id |=
+            (absolute & 1) === 0 ? (nibble & 0x0f) << 8 : (nibble & 0xf0) << 4;
         }
         const key = (id << 4) | (dataChunk[i]! & 15);
         if (known[key] === 0) {
           palette.set(key, job.resolver.resolveLegacy(id, key & 15));
-          if (!keepTiles) palette.special[key] = 0;
+          if (!keepTiles) {
+            palette.special[key] = 0;
+          }
           known[key] = 1;
         }
         ids[i] = palette.ids[key]!;
         data[i] = palette.data[key]!;
         palette.counts[key]! += 1;
-        if (palette.special[key] === 1) job.specials.push(index + i, key);
+        if (palette.special[key] === 1) {
+          job.specials.push(index + i, key);
+        }
       }
       await output.writeRun(ids, data, bytesRead);
       index += bytesRead;
       job.progress("converting", index);
     }
-    if (index !== job.volume) throw new Error(`The file ended early: found ${index} of ${job.volume} blocks`);
+    if (index !== job.volume) {
+      throw new Error(
+        `The file ended early: found ${index} of ${job.volume} blocks`
+      );
+    }
   } finally {
     await inBlocks.close();
     await inData.close();
     await inAdd?.close();
   }
-  for (const path of spills.values()) await rm(path, { force: true });
+  for (const path of spills.values()) {
+    await rm(path, { force: true });
+  }
   job.specials.finalize();
 
   if (hasTiles || hasEntities) {
@@ -1277,8 +1695,12 @@ async function convertLegacy(job: Job): Promise<void> {
     const originZ = job.origin.originZ;
     try {
       await walk(second.reader, (rawPath, type) => {
-        const path = rawPath.startsWith("/Schematic") ? rawPath.slice(10) : rawPath;
-        if (path === "") return type === TAG.Compound ? ENTER : SKIP;
+        const path = rawPath.startsWith("/Schematic")
+          ? rawPath.slice(10)
+          : rawPath;
+        if (path === "") {
+          return type === TAG.Compound ? ENTER : SKIP;
+        }
         if (path === "/TileEntities") {
           return {
             kind: "each",
@@ -1287,7 +1709,14 @@ async function convertLegacy(job: Job): Promise<void> {
               const x = asNumber(child(entry, "x"));
               const y = asNumber(child(entry, "y"));
               const z = asNumber(child(entry, "z"));
-              if (!entry || x === undefined || y === undefined || z === undefined) return;
+              if (
+                !entry ||
+                x === undefined ||
+                y === undefined ||
+                z === undefined
+              ) {
+                return;
+              }
               await job.sourceTile(x, y, z, entry);
             },
           };
@@ -1297,9 +1726,16 @@ async function convertLegacy(job: Job): Promise<void> {
             kind: "each",
             use: async (element) => {
               const entry = asCompound(element);
-              const position = asList(child(entry, "Pos"))?.map((value) => asNumber(value) ?? 0);
-              if (!entry || !position || position.length < 3) return;
-              await job.writeEntity(entry, job.relativePosition(position, [originX, originY, originZ]));
+              const position = asList(child(entry, "Pos"))?.map(
+                (value) => asNumber(value) ?? 0
+              );
+              if (!(entry && position) || position.length < 3) {
+                return;
+              }
+              await job.writeEntity(
+                entry,
+                job.relativePosition(position, [originX, originY, originZ])
+              );
             },
           };
         }
@@ -1317,17 +1753,29 @@ function friendlyError(error: unknown): Error {
   const failure = error as NodeJS.ErrnoException;
   const code = failure?.code ?? "";
   if (code.startsWith("Z_") || code === "ERR_ZLIB_INPUT_ERROR") {
-    return new Error("This file is damaged: its compressed data can't be read. Try exporting it again.");
+    return new Error(
+      "This file is damaged: its compressed data can't be read. Try exporting it again."
+    );
   }
-  if (code === "ENOSPC") return new Error("There isn't enough free disk space in the output folder for this map.");
+  if (code === "ENOSPC") {
+    return new Error(
+      "There isn't enough free disk space in the output folder for this map."
+    );
+  }
   if (code === "EACCES" || code === "EPERM") {
-    return new Error(`Couldn't access ${failure.path ?? "a file"}. Check it isn't open elsewhere and that the output folder is writable.`);
+    return new Error(
+      `Couldn't access ${failure.path ?? "a file"}. Check it isn't open elsewhere and that the output folder is writable.`
+    );
   }
-  if (code === "ENOENT") return new Error(`Couldn't find ${failure.path ?? "the file"}.`);
+  if (code === "ENOENT") {
+    return new Error(`Couldn't find ${failure.path ?? "the file"}.`);
+  }
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export async function convertFile(request: ConvertRequest): Promise<ConvertReport> {
+export async function convertFile(
+  request: ConvertRequest
+): Promise<ConvertReport> {
   try {
     return await runConversion(request);
   } catch (error) {
@@ -1355,10 +1803,17 @@ async function runConversion(request: ConvertRequest): Promise<ConvertReport> {
         await convertLegacy(job);
         break;
     }
-    const actual: FileInfo = { ...info, width: job.width, height: job.height, length: job.length, volume: job.volume };
+    const actual: FileInfo = {
+      ...info,
+      height: job.height,
+      length: job.length,
+      volume: job.volume,
+      width: job.width,
+    };
     return await job.finish(actual, startedAt);
   } finally {
-    await rm(request.tempDir, { recursive: true, force: true }).catch(() => {});
+    await rm(request.tempDir, { force: true, recursive: true }).catch(() => {
+      // Temporary files that can't be removed yet are harmless.
+    });
   }
 }
-
