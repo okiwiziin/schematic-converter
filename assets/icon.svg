@@ -1,4 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#4f46e5"/>
-  <text x="32" y="32" dy="0.35em" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="26" font-weight="600" fill="#ffffff">SC</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="56" fill="#0d0d0d"/>
+  <!-- The handle: a bent stick, whittled unevenly, that pokes out through the head. -->
+  <path d="M46 224 C60 212 76 206 84 186 C91 169 112 171 120 148 C126 129 128 108 144 88 C153 76 160 54 171 31" fill="none" stroke="#f5f5f5" stroke-width="19" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- A second go at the outline, like a pencil that went over it twice. -->
+  <path d="M30 213 C44 203 57 196 65 178 C72 162 85 158 95 146" fill="none" stroke="#f5f5f5" stroke-width="4.5" stroke-linecap="round"/>
+  <!-- The head, a little too big and not quite square on. -->
+  <path d="M161 54 C179 58 201 52 226 63 C238 87 235 113 217 131 C208 141 194 148 175 155 C171 133 157 114 138 97 L119 80 C119 67 125 52 134 39 Z" fill="#f5f5f5" stroke="#f5f5f5" stroke-width="7" stroke-linejoin="round"/>
+  <!-- A chip out of the edge, the bevel, and some scratches. -->
+  <path d="M246 84 L221 96 L243 110 Z" fill="#0d0d0d"/>
+  <path d="M207 72 C211 80 212 84 209 90 M205 112 C203 121 197 129 190 135" fill="none" stroke="#0d0d0d" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M166 78 L180 92 M155 90 L166 101 M180 69 L190 78" fill="none" stroke="#0d0d0d" stroke-width="5" stroke-linecap="round"/>
 </svg>
