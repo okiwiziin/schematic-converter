@@ -1,6 +1,6 @@
-import { ArrowRight, FileDown, FolderPlus, Square } from "lucide-react";
+import { ArrowRight, Download, FileDown, FolderPlus, RefreshCw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { JobState } from "../../shared/ipc";
+import type { JobState, UpdateState } from "../../shared/ipc";
 import iconUrl from "../../../assets/icon.svg";
 import { DetailPane, hasDetail, isTallDetail } from "./components/DetailPane";
 import { FileTable } from "./components/FileTable";
@@ -77,8 +77,37 @@ function useShortcuts(jobs: JobState[], selected: JobState | null, select: (id: 
   }, [jobs, selected, select]);
 }
 
+function UpdateButton({ update, busy }: { update: UpdateState; busy: boolean }) {
+  if (update.status === "downloading") {
+    return <span className="px-1 font-mono text-2xs tabular-nums text-muted-foreground">Updating {update.percent}%</span>;
+  }
+  if (update.status === "ready") {
+    return (
+      <Button
+        variant="bar"
+        className="no-drag"
+        disabled={busy}
+        title={busy ? "Finish converting first" : `Restart to install version ${update.version}`}
+        onClick={() => void api.installUpdate()}
+      >
+        <RefreshCw className="text-info-foreground" />
+        Restart to update
+      </Button>
+    );
+  }
+  if (update.status === "available") {
+    return (
+      <Button variant="bar" className="no-drag" title="Open the download page" onClick={() => void api.installUpdate()}>
+        <Download className="text-info-foreground" />
+        Version {update.version} is out
+      </Button>
+    );
+  }
+  return null;
+}
+
 export function App() {
-  const { jobs, settings, threads, selected, selectedId, select } = useStore();
+  const { jobs, settings, threads, version, update, selected, selectedId, select } = useStore();
   const dragging = useFileDrop();
   useShortcuts(jobs, selected, select);
 
@@ -110,6 +139,7 @@ export function App() {
           Add folder
         </Button>
         <div className="ml-auto flex items-center gap-1.5">
+          <UpdateButton update={update} busy={active.length > 0} />
           {active.length > 0 && (
             <Button
               variant="bar-danger"
@@ -148,7 +178,7 @@ export function App() {
             </div>
           )}
         </main>
-        <OptionsPanel settings={settings} jobs={jobs} threads={threads} />
+        <OptionsPanel settings={settings} jobs={jobs} threads={threads} version={version} updateState={update} />
       </div>
 
       <div

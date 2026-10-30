@@ -2,7 +2,7 @@
 // "More options", which is remembered between launches.
 import { ChevronRight, ExternalLink, FolderOpen, RotateCcw, TriangleAlert } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { JobState, Settings, ThemePreference } from "../../../shared/ipc";
+import type { JobState, Settings, ThemePreference, UpdateState } from "../../../shared/ipc";
 import type { Compression } from "../../../shared/types";
 import { folderName, shortBlockName } from "../format";
 import { api } from "../store";
@@ -60,7 +60,30 @@ const SPLIT = [
   { value: 256, label: "256" },
 ];
 
-export function OptionsPanel({ settings, jobs, threads }: { settings: Settings; jobs: JobState[]; threads: number }) {
+const UPDATE_STATUS: Record<UpdateState["status"], (update: UpdateState) => string> = {
+  unavailable: () => "Only in the installed app",
+  idle: () => "",
+  checking: () => "Checking…",
+  current: () => "Up to date",
+  available: (update) => (update.status === "available" ? `Version ${update.version} is out` : ""),
+  downloading: (update) => (update.status === "downloading" ? `Downloading ${update.percent}%` : ""),
+  ready: (update) => (update.status === "ready" ? `${update.version} is ready, restart` : ""),
+  error: (update) => (update.status === "error" ? update.message : ""),
+};
+
+export function OptionsPanel({
+  settings,
+  jobs,
+  threads,
+  version,
+  updateState,
+}: {
+  settings: Settings;
+  jobs: JobState[];
+  threads: number;
+  version: string;
+  updateState: UpdateState;
+}) {
   const [more, setMore] = useState(() => localStorage.getItem(MORE_KEY) === "1");
   const { options } = settings;
   const update = (patch: Partial<Settings["options"]>): void =>
@@ -191,6 +214,35 @@ export function OptionsPanel({ settings, jobs, threads }: { settings: Settings; 
                     { value: 4, label: "4" },
                   ]}
                 />
+              </div>
+            </div>
+          </Field>
+
+          <Field label="Updates">
+            <div className="inset divide-y">
+              <Toggle
+                label="Update automatically"
+                detail="Checks GitHub every few hours"
+                checked={settings.autoUpdate}
+                onChange={(autoUpdate) => void api.setSettings({ autoUpdate })}
+              />
+              <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                <span className="min-w-0">
+                  <span className="block truncate text-xs/4">Version {version}</span>
+                  <span
+                    className="block truncate text-2xs/3.5 text-muted-foreground"
+                    title={UPDATE_STATUS[updateState.status](updateState)}
+                  >
+                    {UPDATE_STATUS[updateState.status](updateState) || "\u00a0"}
+                  </span>
+                </span>
+                <Button
+                  size="xs"
+                  disabled={["unavailable", "checking", "downloading", "ready"].includes(updateState.status)}
+                  onClick={() => void api.checkForUpdates()}
+                >
+                  Check now
+                </Button>
               </div>
             </div>
           </Field>

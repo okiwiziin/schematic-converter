@@ -19,6 +19,8 @@ const api: Api = {
   clearFinished: () => ipcRenderer.invoke("clear-finished"),
   reveal: (path) => ipcRenderer.invoke("reveal", path),
   openOutputFolder: () => ipcRenderer.invoke("open-output-folder"),
+  checkForUpdates: () => ipcRenderer.invoke("check-updates"),
+  installUpdate: () => ipcRenderer.invoke("install-update"),
   onEvent: (listener) => {
     const wrapped = (_event: unknown, event: AppEvent): void => listener(event);
     ipcRenderer.on("app-event", wrapped);
