@@ -1,0 +1,233 @@
+/* The look comes from T3 Code (MIT): its UI font, neutral near-black canvas, layered hairline
+   cards and glass. Solid surfaces only, no gradients. */
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@theme inline {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(1 / 0.6875);
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: calc(0.875 / 0.625);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-surface: var(--error-surface);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-surface: var(--warning-surface);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 6px);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-status-pulse: status-pulse 2s infinite;
+  @keyframes status-pulse {
+    0%,
+    40% {
+      opacity: 1;
+      animation-timing-function: steps(6);
+    }
+    50%,
+    90% {
+      opacity: 0.5;
+      animation-timing-function: steps(6);
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+  --background: oklch(99.2% 0 0);
+  --foreground: var(--color-zinc-800);
+  --popover: var(--color-white);
+  --primary: var(--color-zinc-900);
+  --primary-foreground: var(--color-white);
+  --muted-foreground: var(--color-zinc-500);
+  --error: var(--color-red-500);
+  --error-foreground: var(--color-red-700);
+  --error-surface: color-mix(in srgb, var(--error) 8%, transparent);
+  --border: var(--color-zinc-200);
+  --input: var(--color-zinc-300);
+  --ring: var(--color-zinc-400);
+  --info: var(--color-sky-500);
+  --info-foreground: var(--color-sky-700);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-700);
+  --warning: var(--color-amber-500);
+  --warning-foreground: var(--color-amber-700);
+  --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
+  --scrollbar-thumb: rgb(217 217 217);
+  --scrollbar-thumb-hover: rgb(191 191 191);
+  --titlebar-inset: calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px));
+  --glass-blur: 12px;
+  --glass-opacity: 80%;
+  --glass-saturation: 1.14;
+  /* Three layers: the canvas, cards on it, and lists inside the cards. */
+  --canvas: var(--background);
+  --panel: var(--color-white);
+  --inset: rgb(0 0 0 / 2.5%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: var(--color-neutral-950);
+    --foreground: var(--color-neutral-100);
+    --popover: var(--color-neutral-900);
+    --primary: var(--color-neutral-100);
+    --primary-foreground: var(--color-neutral-950);
+    --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
+    --error: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
+    --error-foreground: var(--color-red-400);
+    --error-surface: color-mix(in srgb, var(--error) 14%, transparent);
+    --border: rgb(255 255 255 / 7%);
+    --input: rgb(255 255 255 / 10%);
+    --ring: rgb(255 255 255 / 40%);
+    --info-foreground: var(--color-sky-400);
+    --success-foreground: var(--color-emerald-400);
+    --warning-foreground: var(--color-amber-400);
+    --warning-surface: color-mix(in srgb, var(--warning) 14%, transparent);
+    --scrollbar-thumb: rgb(255 255 255 / 10%);
+    --scrollbar-thumb-hover: rgb(255 255 255 / 16%);
+    --glass-blur: 16px;
+    --glass-saturation: 1.08;
+    --panel: var(--color-neutral-900);
+    --inset: rgb(255 255 255 / 3%);
+  }
+}
+
+/* Where the OS provides real window glass, let it show through. */
+html[data-glass] {
+  --canvas: color-mix(in srgb, var(--background) 74%, transparent);
+  --panel: color-mix(in srgb, var(--color-white) 60%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-glass] {
+    --panel: rgb(255 255 255 / 4.5%);
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+  }
+
+  html[data-glass] body {
+    background: transparent;
+  }
+
+  /* In the base layer so that border colour utilities can override it. */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  input,
+  .selectable {
+    user-select: text;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.canvas {
+  background: var(--canvas);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+}
+
+.inset {
+  background: var(--inset);
+  border-radius: var(--radius-xl);
+}
+
+.surface-glass {
+  background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.progress-indeterminate {
+  animation: progress-slide 1.4s var(--ease-drawer) infinite;
+}
+
+@keyframes progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate,
+  .animate-status-pulse {
+    animation: none;
+  }
+}
