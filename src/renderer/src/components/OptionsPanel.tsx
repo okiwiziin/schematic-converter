@@ -1,8 +1,19 @@
 // The options people actually change come first. Everything else sits one click away under
 // "More options", which is remembered between launches.
-import { ChevronRight, ExternalLink, FolderOpen, RotateCcw, TriangleAlert } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import type { JobState, Settings, ThemePreference, UpdateState } from "../../../shared/ipc";
+import {
+  ChevronRight,
+  ExternalLink,
+  FolderOpen,
+  RotateCcw,
+  TriangleAlert,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
+import type {
+  JobState,
+  Settings,
+  ThemePreference,
+  UpdateState,
+} from "../../../shared/ipc";
 import type { Compression } from "../../../shared/types";
 import { folderName, shortBlockName } from "../format";
 import { api } from "../store";
@@ -12,12 +23,22 @@ import { Button, cn, Segmented, Switch } from "./ui";
 const LARGE_FILE_BLOCKS = 200_000_000;
 const MORE_KEY = "show-more-options";
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <div>
-      <div className="mb-1 px-0.5 text-xs text-muted-foreground">{label}</div>
+      <div className="text-muted-foreground mb-1 px-0.5 text-xs">{label}</div>
       {children}
-      {hint && <p className="mt-1 px-0.5 text-2xs/3.5 text-muted-foreground">{hint}</p>}
+      {hint && (
+        <p className="text-2xs/3.5 text-muted-foreground mt-1 px-0.5">{hint}</p>
+      )}
     </div>
   );
 }
@@ -37,38 +58,59 @@ function Toggle({
     <div className="flex items-center justify-between gap-2 px-2 py-1.5">
       <span className="min-w-0">
         <span className="block truncate text-xs/4">{label}</span>
-        <span className="block truncate text-2xs/3.5 text-muted-foreground" title={detail}>
+        <span
+          className="text-2xs/3.5 text-muted-foreground block truncate"
+          title={detail}
+        >
           {detail}
         </span>
       </span>
-      <Switch label={label} checked={checked} onChange={onChange} />
+      <Switch checked={checked} label={label} onChange={onChange} />
     </div>
   );
 }
 
 const COMPRESSION = [
-  { value: "balanced", label: "Balanced", hint: "Standard size, and fast on most CPUs." },
-  { value: "fast", label: "Fastest", hint: "For slower CPUs. Files are about 40% larger." },
-  { value: "small", label: "Smallest", hint: "Takes longer for slightly smaller files." },
+  {
+    hint: "Standard size, and fast on most CPUs.",
+    label: "Balanced",
+    value: "balanced",
+  },
+  {
+    hint: "For slower CPUs. Files are about 40% larger.",
+    label: "Fastest",
+    value: "fast",
+  },
+  {
+    hint: "Takes longer for slightly smaller files.",
+    label: "Smallest",
+    value: "small",
+  },
 ] satisfies { value: Compression; label: string; hint: string }[];
 
 const SPLIT = [
-  { value: 0, label: "Off" },
-  { value: 2048, label: "2048" },
-  { value: 1024, label: "1024" },
-  { value: 512, label: "512" },
-  { value: 256, label: "256" },
+  { label: "Off", value: 0 },
+  { label: "2048", value: 2048 },
+  { label: "1024", value: 1024 },
+  { label: "512", value: 512 },
+  { label: "256", value: 256 },
 ];
 
-const UPDATE_STATUS: Record<UpdateState["status"], (update: UpdateState) => string> = {
-  unavailable: () => "Only in the installed app",
-  idle: () => "",
+const UPDATE_STATUS: Record<
+  UpdateState["status"],
+  (update: UpdateState) => string
+> = {
+  available: (update) =>
+    update.status === "available" ? `Version ${update.version} is out` : "",
   checking: () => "Checking…",
   current: () => "Up to date",
-  available: (update) => (update.status === "available" ? `Version ${update.version} is out` : ""),
-  downloading: (update) => (update.status === "downloading" ? `Downloading ${update.percent}%` : ""),
-  ready: (update) => (update.status === "ready" ? `${update.version} is ready, restart` : ""),
+  downloading: (update) =>
+    update.status === "downloading" ? `Downloading ${update.percent}%` : "",
   error: (update) => (update.status === "error" ? update.message : ""),
+  idle: () => "",
+  ready: (update) =>
+    update.status === "ready" ? `${update.version} is ready, restart` : "",
+  unavailable: () => "Only in the installed app",
 };
 
 export function OptionsPanel({
@@ -84,32 +126,41 @@ export function OptionsPanel({
   version: string;
   updateState: UpdateState;
 }) {
-  const [more, setMore] = useState(() => localStorage.getItem(MORE_KEY) === "1");
+  const [more, setMore] = useState(
+    () => localStorage.getItem(MORE_KEY) === "1"
+  );
   const { options } = settings;
   const update = (patch: Partial<Settings["options"]>): void =>
     void api.setSettings({ options: { ...options, ...patch } });
   const overrides = Object.entries(options.overrides);
   const hasBigFile =
-    options.tileSize === 0 && jobs.some((job) => (job.info?.volume ?? 0) > LARGE_FILE_BLOCKS && job.status !== "done");
+    options.tileSize === 0 &&
+    jobs.some(
+      (job) =>
+        (job.info?.volume ?? 0) > LARGE_FILE_BLOCKS && job.status !== "done"
+    );
 
   return (
-    <aside aria-label="Options" className="panel flex w-58 shrink-0 flex-col gap-3 overflow-y-auto p-2">
+    <aside
+      aria-label="Options"
+      className="panel flex w-58 shrink-0 flex-col gap-3 overflow-y-auto p-2"
+    >
       <Field label="Save to">
         <div className="flex gap-1">
           <Button
-            size="sm"
             className="min-w-0 flex-1 justify-start font-normal"
-            title={settings.outputDir}
             onClick={() => void api.pickOutput()}
+            size="sm"
+            title={settings.outputDir}
           >
             <FolderOpen />
             <span className="truncate">{folderName(settings.outputDir)}</span>
           </Button>
           <Button
-            size="icon-sm"
             aria-label="Open output folder"
-            title="Open output folder"
             onClick={() => void api.openOutputFolder()}
+            size="icon-sm"
+            title="Open output folder"
           >
             <ExternalLink />
           </Button>
@@ -117,44 +168,62 @@ export function OptionsPanel({
       </Field>
 
       <Field
+        hint={
+          options.tileSize === 0
+            ? "Off keeps one file, unless 1.8 can't hold it."
+            : "Pasted from one spot, the pieces line up."
+        }
         label="Split big maps into squares of"
-        hint={options.tileSize === 0 ? "Off keeps one file, unless 1.8 can't hold it." : "Pasted from one spot, the pieces line up."}
       >
         <Segmented<number>
           fill
           label="Split big maps"
-          value={options.tileSize}
           onChange={(tileSize) => update({ tileSize })}
           options={SPLIT}
+          value={options.tileSize}
         />
         {hasBigFile && (
-          <p className="mt-1.5 flex gap-1.5 rounded-lg bg-warning-surface px-2 py-1.5 text-2xs/3.5">
-            <TriangleAlert className="mt-px size-3 shrink-0 text-warning-foreground" />
-            <span>Big map. WorldEdit on 1.8.8 loads a whole file into memory, so splitting helps.</span>
+          <p className="bg-warning-surface text-2xs/3.5 mt-1.5 flex gap-1.5 rounded-lg px-2 py-1.5">
+            <TriangleAlert className="text-warning-foreground mt-px size-3 shrink-0" />
+            <span>
+              Big map. WorldEdit on 1.8.8 loads a whole file into memory, so
+              splitting helps.
+            </span>
           </p>
         )}
       </Field>
 
-      <Field label="Compression" hint={COMPRESSION.find((option) => option.value === options.compression)?.hint}>
+      <Field
+        hint={
+          COMPRESSION.find((option) => option.value === options.compression)
+            ?.hint
+        }
+        label="Compression"
+      >
         <Segmented<Compression>
           fill
           label="Compression"
-          value={options.compression}
           onChange={(compression) => update({ compression })}
           options={COMPRESSION}
+          value={options.compression}
         />
       </Field>
 
       <button
-        type="button"
         aria-expanded={more}
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex h-6 cursor-pointer items-center gap-1 rounded-md px-0.5 text-xs transition-colors outline-none focus-visible:ring-2"
         onClick={() => {
           setMore(!more);
           localStorage.setItem(MORE_KEY, more ? "0" : "1");
         }}
-        className="flex h-6 cursor-pointer items-center gap-1 rounded-md px-0.5 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        type="button"
       >
-        <ChevronRight className={cn("size-3.5 transition-transform duration-150", more && "rotate-90")} />
+        <ChevronRight
+          className={cn(
+            "size-3.5 transition-transform duration-150",
+            more && "rotate-90"
+          )}
+        />
         More options
       </button>
 
@@ -163,15 +232,15 @@ export function OptionsPanel({
           <Field label="Keep">
             <div className="inset divide-y">
               <Toggle
-                label="Block entities"
-                detail="Signs, chests, heads, banners"
                 checked={options.keepTileEntities}
+                detail="Signs, chests, heads, banners"
+                label="Block entities"
                 onChange={(keepTileEntities) => update({ keepTileEntities })}
               />
               <Toggle
-                label="Entities"
-                detail="Armor stands, frames, paintings, mobs"
                 checked={options.keepEntities}
+                detail="Armor stands, frames, paintings, mobs"
+                label="Entities"
                 onChange={(keepEntities) => update({ keepEntities })}
               />
             </div>
@@ -181,22 +250,22 @@ export function OptionsPanel({
             <Segmented
               fill
               label="Blocks from mods become"
-              value={options.fallback}
               onChange={(fallback) => update({ fallback })}
               options={[
-                { value: "0:0", label: "Air" },
-                { value: "1:0", label: "Stone" },
-                { value: "19:0", label: "Sponge" },
+                { label: "Air", value: "0:0" },
+                { label: "Stone", value: "1:0" },
+                { label: "Sponge", value: "19:0" },
               ]}
+              value={options.fallback}
             />
           </Field>
 
           <Field label="Files">
             <div className="inset divide-y">
               <Toggle
-                label="Replace existing"
-                detail="Otherwise adds a number to the name"
                 checked={options.overwrite}
+                detail="Otherwise adds a number to the name"
+                label="Replace existing"
                 onChange={(overwrite) => update({ overwrite })}
               />
               <div
@@ -206,13 +275,15 @@ export function OptionsPanel({
                 <span className="truncate text-xs">At once</span>
                 <Segmented<number>
                   label="Convert at once"
-                  value={settings.parallelJobs}
-                  onChange={(parallelJobs) => void api.setSettings({ parallelJobs })}
+                  onChange={(parallelJobs) =>
+                    void api.setSettings({ parallelJobs })
+                  }
                   options={[
-                    { value: 1, label: "1" },
-                    { value: 2, label: "2" },
-                    { value: 4, label: "4" },
+                    { label: "1", value: 1 },
+                    { label: "2", value: 2 },
+                    { label: "4", value: 4 },
                   ]}
+                  value={settings.parallelJobs}
                 />
               </div>
             </div>
@@ -221,25 +292,32 @@ export function OptionsPanel({
           <Field label="Updates">
             <div className="inset divide-y">
               <Toggle
-                label="Update automatically"
-                detail="Checks GitHub every few hours"
                 checked={settings.autoUpdate}
+                detail="Checks GitHub every few hours"
+                label="Update automatically"
                 onChange={(autoUpdate) => void api.setSettings({ autoUpdate })}
               />
               <div className="flex items-center justify-between gap-2 px-2 py-1.5">
                 <span className="min-w-0">
-                  <span className="block truncate text-xs/4">Version {version}</span>
+                  <span className="block truncate text-xs/4">
+                    Version {version}
+                  </span>
                   <span
-                    className="block truncate text-2xs/3.5 text-muted-foreground"
+                    className="text-2xs/3.5 text-muted-foreground block truncate"
                     title={UPDATE_STATUS[updateState.status](updateState)}
                   >
                     {UPDATE_STATUS[updateState.status](updateState) || "\u00a0"}
                   </span>
                 </span>
                 <Button
-                  size="xs"
-                  disabled={["unavailable", "checking", "downloading", "ready"].includes(updateState.status)}
+                  disabled={[
+                    "unavailable",
+                    "checking",
+                    "downloading",
+                    "ready",
+                  ].includes(updateState.status)}
                   onClick={() => void api.checkForUpdates()}
+                  size="xs"
                 >
                   Check now
                 </Button>
@@ -251,13 +329,13 @@ export function OptionsPanel({
             <Segmented<ThemePreference>
               fill
               label="Theme"
-              value={settings.theme}
               onChange={(theme) => void api.setSettings({ theme })}
               options={[
-                { value: "system", label: "System" },
-                { value: "light", label: "Light" },
-                { value: "dark", label: "Dark" },
+                { label: "System", value: "system" },
+                { label: "Light", value: "light" },
+                { label: "Dark", value: "dark" },
               ]}
+              value={settings.theme}
             />
           </Field>
         </>
@@ -267,21 +345,29 @@ export function OptionsPanel({
         <Field label={`Your block choices (${overrides.length})`}>
           <div className="inset space-y-px p-1">
             {overrides.map(([name, value]) => (
-              <div key={name} className="flex h-6 items-center gap-1 rounded-md pr-0.5 pl-1.5 hover:bg-foreground/4">
-                <span className="selectable min-w-0 flex-1 truncate font-mono text-3xs" title={name}>
+              <div
+                className="hover:bg-foreground/4 flex h-6 items-center gap-1 rounded-md pr-0.5 pl-1.5"
+                key={name}
+              >
+                <span
+                  className="selectable text-3xs min-w-0 flex-1 truncate font-mono"
+                  title={name}
+                >
                   {shortBlockName(name)}
                 </span>
-                <span className="shrink-0 font-mono text-3xs text-muted-foreground">{value}</span>
+                <span className="text-3xs text-muted-foreground shrink-0 font-mono">
+                  {value}
+                </span>
                 <Button
-                  variant="ghost"
-                  size="icon-xs"
                   aria-label={`Remove your choice for ${name}`}
-                  title="Back to the default mapping"
                   onClick={() => {
                     const next = { ...options.overrides };
                     delete next[name];
                     update({ overrides: next });
                   }}
+                  size="icon-xs"
+                  title="Back to the default mapping"
+                  variant="ghost"
                 >
                   <RotateCcw />
                 </Button>

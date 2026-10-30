@@ -6,7 +6,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const dataDir = join(root, "node_modules/minecraft-data/minecraft-data/data/pc");
+const dataDir = join(
+  root,
+  "node_modules/minecraft-data/minecraft-data/data/pc"
+);
 const read = (path) => JSON.parse(readFileSync(join(dataDir, path), "utf8"));
 
 const legacy = read("common/legacy.json");
@@ -18,13 +21,15 @@ const items18 = read("1.8/items.json");
 function correct(idMeta, state) {
   const [id, meta] = idMeta.split(":").map(Number);
   const open = state.indexOf("[");
-  if (open === -1) return state;
+  if (open === -1) {
+    return state;
+  }
   const name = state.slice(0, open);
   const props = Object.fromEntries(
     state
       .slice(open + 1, -1)
       .split(",")
-      .map((pair) => pair.split("=")),
+      .map((pair) => pair.split("="))
   );
   const rebuild = () =>
     `${name}[${Object.entries(props)
@@ -36,12 +41,16 @@ function correct(idMeta, state) {
       delete props.powered;
       return rebuild();
     case 69: // Levers on floors and ceilings have their handle directions swapped.
-      if (props.face === "wall") return state;
+      if (props.face === "wall") {
+        return state;
+      }
       props.facing = meta & 1 ? "north" : "west";
       return rebuild();
     case 77:
     case 143: // Buttons on floors and ceilings have no direction at all.
-      if (props.face !== "wall") delete props.facing;
+      if (props.face !== "wall") {
+        delete props.facing;
+      }
       return rebuild();
     case 149:
     case 150: // Whether a comparator is on is bit 8, not which of its two ids it has.
@@ -54,11 +63,19 @@ function correct(idMeta, state) {
 
 // Flattened state -> "id:meta" pairs, every 1.12 block. The resolver filters out
 // ids above 197 itself so that 1.9-1.12 blocks can still be recognised by name.
-const legacyBlocks = Object.entries(legacy.blocks).map(([idMeta, state]) => [idMeta, correct(idMeta, state)]);
-const legacyItems = Object.entries(legacy.items).map(([idMeta, name]) => [idMeta, name]);
+const legacyBlocks = Object.entries(legacy.blocks).map(([idMeta, state]) => [
+  idMeta,
+  correct(idMeta, state),
+]);
+const legacyItems = Object.entries(legacy.items).map(([idMeta, name]) => [
+  idMeta,
+  name,
+]);
 
 const blockNames = {};
-for (const block of blocks18) blockNames[block.id] = { name: block.name, display: block.displayName };
+for (const block of blocks18) {
+  blockNames[block.id] = { display: block.displayName, name: block.name };
+}
 
 const variants = {};
 for (const block of blocks18) {
@@ -68,13 +85,20 @@ for (const block of blocks18) {
 }
 
 const itemNames = {};
-for (const item of items18) itemNames[item.id] = item.name;
-for (const block of blocks18) itemNames[block.id] ??= block.name;
+for (const item of items18) {
+  itemNames[item.id] = item.name;
+}
+for (const block of blocks18) {
+  itemNames[block.id] ??= block.name;
+}
 
 // Data version to release name, for telling the user what made their file.
 const protocol = read("common/protocolVersions.json");
 const releases = protocol
-  .filter((entry) => entry.dataVersion && /^\d+\.\d+(\.\d+)?$/.test(entry.minecraftVersion))
+  .filter(
+    (entry) =>
+      entry.dataVersion && /^\d+\.\d+(?:\.\d+)?$/u.test(entry.minecraftVersion)
+  )
   .map((entry) => [entry.dataVersion, entry.minecraftVersion])
   .sort((a, b) => a[0] - b[0]);
 
@@ -82,10 +106,13 @@ const outDir = join(root, "src/engine/data");
 mkdirSync(outDir, { recursive: true });
 writeFileSync(
   join(outDir, "legacy.json"),
-  JSON.stringify({ blocks: legacyBlocks, items: legacyItems }),
+  JSON.stringify({ blocks: legacyBlocks, items: legacyItems })
 );
 writeFileSync(join(outDir, "versions.json"), JSON.stringify(releases));
-writeFileSync(join(outDir, "names18.json"), JSON.stringify({ blocks: blockNames, variants, items: itemNames }));
+writeFileSync(
+  join(outDir, "names18.json"),
+  JSON.stringify({ blocks: blockNames, items: itemNames, variants })
+);
 console.log(
-  `legacy.json: ${legacyBlocks.length} block states, ${legacyItems.length} items; names18.json: ${blocks18.length} blocks, ${items18.length} items`,
+  `legacy.json: ${legacyBlocks.length} block states, ${legacyItems.length} items; names18.json: ${blocks18.length} blocks, ${items18.length} items`
 );

@@ -3,8 +3,10 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono:
+    "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @theme inline {
@@ -56,7 +58,6 @@
 }
 
 :root {
-  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(99.2% 0 0);
   --foreground: var(--color-zinc-800);
@@ -79,7 +80,11 @@
   --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
   --scrollbar-thumb: rgb(217 217 217);
   --scrollbar-thumb-hover: rgb(191 191 191);
-  --titlebar-inset: calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px));
+  --titlebar-inset: calc(
+    100vw -
+    env(titlebar-area-width, 100vw) -
+    env(titlebar-area-x, 0px)
+  );
   --glass-blur: 12px;
   --glass-opacity: 80%;
   --glass-saturation: 1.14;
@@ -87,17 +92,21 @@
   --canvas: var(--background);
   --panel: var(--color-white);
   --inset: rgb(0 0 0 / 2.5%);
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    color-scheme: dark;
     --background: var(--color-neutral-950);
     --foreground: var(--color-neutral-100);
     --popover: var(--color-neutral-900);
     --primary: var(--color-neutral-100);
     --primary-foreground: var(--color-neutral-950);
-    --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
+    --muted-foreground: color-mix(
+      in srgb,
+      var(--color-neutral-500) 90%,
+      var(--color-white)
+    );
     --error: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
     --error-foreground: var(--color-red-400);
     --error-surface: color-mix(in srgb, var(--error) 14%, transparent);
@@ -114,6 +123,7 @@
     --glass-saturation: 1.08;
     --panel: var(--color-neutral-900);
     --inset: rgb(255 255 255 / 3%);
+    color-scheme: dark;
   }
 }
 
@@ -139,13 +149,13 @@ html[data-glass] {
   body {
     margin: 0;
     overflow: hidden;
-    background: var(--background);
-    color: var(--foreground);
     font-family: var(--font-sans);
     font-size: 13px;
     -webkit-font-smoothing: antialiased;
-    user-select: none;
+    color: var(--foreground);
     cursor: default;
+    user-select: none;
+    background: var(--background);
   }
 
   html[data-glass] body {
@@ -199,8 +209,13 @@ html[data-glass] {
 }
 
 .surface-glass {
-  background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  background: color-mix(
+    in srgb,
+    var(--background) var(--glass-opacity),
+    transparent
+  );
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturation));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 }
 

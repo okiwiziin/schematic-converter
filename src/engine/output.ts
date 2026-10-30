@@ -8,45 +8,50 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import zlib from "node:zlib";
 import {
+  type CompressionLevel,
   crc32Combine,
   createFile,
-  deflateSmall,
   DeflatePool,
   DeflateSection,
+  deflateSmall,
   GZIP_HEADER,
   gzipTrailer,
   storedBlock,
-  type CompressionLevel,
 } from "./gzip";
-import { nbt, NbtEncoder, TAG, type Compound } from "./nbt/nbt";
+import { type Compound, NbtEncoder, nbt, TAG } from "./nbt/nbt";
 
 // The format stores sizes as signed shorts and arrays with signed int lengths.
-export const MAX_SIDE = 32767;
-export const MAX_ARRAY = 2147483647;
+export const MAX_SIDE = 32_767;
+export const MAX_ARRAY = 2_147_483_647;
 const MAX_TILES = 1024;
 
 export interface WorldEditOrigin {
-  // Lowest corner of the region, which is what the WEOrigin fields really hold.
-  originX: number;
-  originY: number;
-  originZ: number;
   // Corner minus the point it was copied from, so //paste lands where the player expects.
   offsetX: number;
   offsetY: number;
   offsetZ: number;
+  // Lowest corner of the region, which is what the WEOrigin fields really hold.
+  originX: number;
+  originY: number;
+  originZ: number;
 }
 
 export interface OutputSummary {
-  path: string;
-  size: number;
-  width: number;
   height: number;
   length: number;
+  path: string;
+  size: number;
   tileX: number;
   tileZ: number;
+  width: number;
 }
 
-function encodeHeader(width: number, height: number, length: number, origin: WorldEditOrigin): Buffer {
+function encodeHeader(
+  width: number,
+  height: number,
+  length: number,
+  origin: WorldEditOrigin
+): Buffer {
   const encoder = new NbtEncoder(256);
   encoder.head(TAG.Compound, "Schematic");
   encoder.named("Height", nbt.short(height));
@@ -79,12 +84,12 @@ function listHead(name: string, count: number): Buffer {
 }
 
 const PLACEHOLDER_ORIGIN: WorldEditOrigin = {
-  originX: 0,
-  originY: 0,
-  originZ: 0,
   offsetX: 0,
   offsetY: 0,
   offsetZ: 0,
+  originX: 0,
+  originY: 0,
+  originZ: 0,
 };
 
 // A single .schematic file being written.
@@ -114,25 +119,38 @@ class SchematicFile {
     readonly length: number,
     readonly finalPath: string,
     readonly tileX: number,
-    readonly tileZ: number,
+    readonly tileZ: number
   ) {
     this.volume = width * height * length;
     this.mainPath = join(tempDir, `${stem}.main`);
     this.dataPath = join(tempDir, `${stem}.data`);
     this.tilePath = join(tempDir, `${stem}.tiles`);
     this.entityPath = join(tempDir, `${stem}.entities`);
-    this.headerLength = encodeHeader(width, height, length, PLACEHOLDER_ORIGIN).length;
+    this.headerLength = encodeHeader(
+      width,
+      height,
+      length,
+      PLACEHOLDER_ORIGIN
+    ).length;
 
     this.blocks = new DeflateSection(pool, chunkSize, async () => {
       const file = await open(this.mainPath, "w");
       // Reserve room for the gzip header and a stored block holding the NBT header.
-      await file.write(Buffer.alloc(GZIP_HEADER.length + 5 + this.headerLength));
+      await file.write(
+        Buffer.alloc(GZIP_HEADER.length + 5 + this.headerLength)
+      );
       return file;
     });
     const smallChunk = Math.min(chunkSize, 1024 * 1024);
-    this.data = new DeflateSection(pool, chunkSize, () => createFile(this.dataPath));
-    this.tiles = new DeflateSection(pool, smallChunk, () => createFile(this.tilePath));
-    this.entities = new DeflateSection(pool, smallChunk, () => createFile(this.entityPath));
+    this.data = new DeflateSection(pool, chunkSize, () =>
+      createFile(this.dataPath)
+    );
+    this.tiles = new DeflateSection(pool, smallChunk, () =>
+      createFile(this.tilePath)
+    );
+    this.entities = new DeflateSection(pool, smallChunk, () =>
+      createFile(this.entityPath)
+    );
   }
 
   async begin(): Promise<void> {
@@ -142,7 +160,12 @@ class SchematicFile {
     await this.data.write(arrayHead("Data", this.volume));
   }
 
-  async writeBlocks(ids: Uint8Array, data: Uint8Array, start: number, end: number): Promise<void> {
+  async writeBlocks(
+    ids: Uint8Array,
+    data: Uint8Array,
+    start: number,
+    end: number
+  ): Promise<void> {
     await this.blocks.write(ids, start, end);
     await this.data.write(data, start, end);
   }
@@ -177,7 +200,8 @@ class SchematicFile {
       crc = crc32Combine(crc, sectionCrc, length);
       total += length;
     };
-    const absorbBytes = (bytes: Buffer): void => absorb(zlib.crc32(bytes), bytes.length);
+    const absorbBytes = (bytes: Buffer): void =>
+      absorb(zlib.crc32(bytes), bytes.length);
 
     absorb(this.blocks.crc, this.blocks.rawLength);
     absorb(this.data.crc, this.data.rawLength);
@@ -188,7 +212,10 @@ class SchematicFile {
 
     const mainPath = this.mainPath;
     const appendFile = async (path: string): Promise<void> => {
-      await pipeline(createReadStream(path, { highWaterMark: 4 * 1024 * 1024 }), createWriteStream(mainPath, { flags: "a" }));
+      await pipeline(
+        createReadStream(path, { highWaterMark: 4 * 1024 * 1024 }),
+        createWriteStream(mainPath, { flags: "a" })
+      );
     };
     const appendBytes = async (bytes: Buffer): Promise<void> => {
       const file = await open(mainPath, "a");
@@ -215,7 +242,12 @@ class SchematicFile {
 
     // With everything known, patch the reserved space at the start of the file.
     const patch = await open(mainPath, "r+");
-    await patch.write(Buffer.concat([GZIP_HEADER, storedBlock(header)]), 0, undefined, 0);
+    await patch.write(
+      Buffer.concat([GZIP_HEADER, storedBlock(header)]),
+      0,
+      undefined,
+      0
+    );
     await patch.close();
 
     await rm(this.dataPath, { force: true });
@@ -230,17 +262,22 @@ class SchematicFile {
     await this.data.finish();
     await this.tiles.finish();
     await this.entities.finish();
-    for (const path of [this.mainPath, this.dataPath, this.tilePath, this.entityPath]) {
+    for (const path of [
+      this.mainPath,
+      this.dataPath,
+      this.tilePath,
+      this.entityPath,
+    ]) {
       await rm(path, { force: true });
     }
   }
 }
 
 export interface TileLayout {
-  tileWidth: number;
-  tileLength: number;
   columns: number;
   rows: number;
+  tileLength: number;
+  tileWidth: number;
 }
 
 // Works out the grid. `requested` is the user's tile size in blocks, or 0 for one file
@@ -249,13 +286,17 @@ export function planTiles(
   width: number,
   height: number,
   length: number,
-  requested: number,
+  requested: number
 ): { layout: TileLayout; forced: boolean } {
   let side = requested > 0 ? requested : Math.max(width, length);
   let forced = false;
 
   // Every tile has to fit the format's limits.
-  if (height > MAX_SIDE) throw new Error(`This schematic is ${height} blocks tall, more than the format allows`);
+  if (height > MAX_SIDE) {
+    throw new Error(
+      `This schematic is ${height} blocks tall, more than the format allows`
+    );
+  }
   const maxSide = Math.min(MAX_SIDE, Math.floor(Math.sqrt(MAX_ARRAY / height)));
   const tooBig = (w: number, l: number): boolean =>
     w > MAX_SIDE || l > MAX_SIDE || w * height * l > MAX_ARRAY;
@@ -270,7 +311,9 @@ export function planTiles(
     const scale = Math.ceil(Math.sqrt((columns * rows) / MAX_TILES));
     side *= scale;
     if (tooBig(Math.min(width, side), Math.min(length, side))) {
-      throw new Error("This map is too large to split into a reasonable number of files");
+      throw new Error(
+        "This map is too large to split into a reasonable number of files"
+      );
     }
     columns = Math.ceil(width / side);
     rows = Math.ceil(length / side);
@@ -279,18 +322,22 @@ export function planTiles(
   // When the split wasn't the user's choice, share the map out evenly rather than leaving slivers.
   const even = forced && requested === 0;
   return {
+    forced,
     layout: {
-      tileWidth: even ? Math.ceil(width / columns) : Math.min(side, width),
-      tileLength: even ? Math.ceil(length / rows) : Math.min(side, length),
       columns,
       rows,
+      tileLength: even ? Math.ceil(length / rows) : Math.min(side, length),
+      tileWidth: even ? Math.ceil(width / columns) : Math.min(side, width),
     },
-    forced,
   };
 }
 
 function isAllZero(bytes: Uint8Array, start: number, end: number): boolean {
-  for (let i = start; i < end; i++) if (bytes[i] !== 0) return false;
+  for (let i = start; i < end; i++) {
+    if (bytes[i] !== 0) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -314,12 +361,18 @@ export class SchematicOutput {
     outputDir: string,
     baseName: string,
     level: CompressionLevel,
-    threads: number,
+    threads: number
   ) {
     this.layout = layout;
     const fileCount = layout.columns * layout.rows;
     // Scale chunks down with the number of files so memory stays bounded.
-    const chunkSize = Math.max(64 * 1024, Math.min(4 * 1024 * 1024, Math.floor((256 * 1024 * 1024) / (fileCount * 2))));
+    const chunkSize = Math.max(
+      64 * 1024,
+      Math.min(
+        4 * 1024 * 1024,
+        Math.floor((256 * 1024 * 1024) / (fileCount * 2))
+      )
+    );
     this.pool = new DeflatePool(Math.max(2, threads + 2), level);
     for (let row = 0; row < layout.rows; row++) {
       for (let column = 0; column < layout.columns; column++) {
@@ -337,8 +390,8 @@ export class SchematicOutput {
             l,
             join(outputDir, `${baseName}${suffix}.schematic`),
             column,
-            row,
-          ),
+            row
+          )
         );
       }
     }
@@ -346,16 +399,24 @@ export class SchematicOutput {
 
   async begin(): Promise<void> {
     await mkdir(this.tempDir, { recursive: true });
-    for (const file of this.files) await file.begin();
+    for (const file of this.files) {
+      await file.begin();
+    }
   }
 
   // ids and data hold `count` blocks continuing on from the last call.
-  async writeRun(ids: Uint8Array, data: Uint8Array, count: number): Promise<void> {
+  async writeRun(
+    ids: Uint8Array,
+    data: Uint8Array,
+    count: number
+  ): Promise<void> {
     this.written += count;
     const { columns, rows, tileWidth, tileLength } = this.layout;
     if (columns === 1 && rows === 1) {
       const file = this.files[0]!;
-      if (!file.hasContent && !isAllZero(ids, 0, count)) file.hasContent = true;
+      if (!(file.hasContent || isAllZero(ids, 0, count))) {
+        file.hasContent = true;
+      }
       await file.writeBlocks(ids, data, 0, count);
       return;
     }
@@ -366,7 +427,9 @@ export class SchematicOutput {
       const segmentEnd = Math.min((column + 1) * tileWidth, this.width);
       const take = Math.min(count - at, segmentEnd - this.x);
       const file = this.files[row * columns + column]!;
-      if (!file.hasContent && !isAllZero(ids, at, at + take)) file.hasContent = true;
+      if (!(file.hasContent || isAllZero(ids, at, at + take))) {
+        file.hasContent = true;
+      }
       await file.writeBlocks(ids, data, at, at + take);
       at += take;
       this.x += take;
@@ -406,7 +469,10 @@ export class SchematicOutput {
     await this.fileAt(clampedX, clampedZ).writeEntity(tag);
   }
 
-  async finish(origin: WorldEditOrigin, onFile?: (index: number, total: number) => void): Promise<OutputSummary[]> {
+  async finish(
+    origin: WorldEditOrigin,
+    onFile?: (index: number, total: number) => void
+  ): Promise<OutputSummary[]> {
     const summaries: OutputSummary[] = [];
     const multi = this.files.length > 1;
     let index = 0;
@@ -420,21 +486,21 @@ export class SchematicOutput {
       const xShift = file.tileX * this.layout.tileWidth;
       const zShift = file.tileZ * this.layout.tileLength;
       const size = await file.finish({
-        originX: origin.originX + xShift,
-        originY: origin.originY,
-        originZ: origin.originZ + zShift,
         offsetX: origin.offsetX + xShift,
         offsetY: origin.offsetY,
         offsetZ: origin.offsetZ + zShift,
+        originX: origin.originX + xShift,
+        originY: origin.originY,
+        originZ: origin.originZ + zShift,
       });
       summaries.push({
-        path: file.finalPath,
-        size,
-        width: file.width,
         height: file.height,
         length: file.length,
+        path: file.finalPath,
+        size,
         tileX: file.tileX,
         tileZ: file.tileZ,
+        width: file.width,
       });
     }
     return summaries;

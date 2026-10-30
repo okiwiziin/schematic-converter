@@ -1,17 +1,40 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import zlib from "node:zlib";
 import prismarine from "prismarine-nbt";
 import { convertFile } from "../src/engine/convert";
-import { nbt, NbtEncoder, TAG, type NbtTag } from "../src/engine/nbt/nbt";
-import { DEFAULT_OPTIONS, type ConvertOptions, type ConvertReport } from "../src/shared/types";
+import { NbtEncoder, type NbtTag, nbt, TAG } from "../src/engine/nbt/nbt";
+import {
+  type ConvertOptions,
+  type ConvertReport,
+  DEFAULT_OPTIONS,
+} from "../src/shared/types";
 
-export const compound = (entries: Record<string, NbtTag> = {}): NbtTag => nbt.compound(new Map(Object.entries(entries)));
-export const ints = (...values: number[]): NbtTag => ({ t: 11, v: Int32Array.from(values) });
-export const list = (et: number, ...values: NbtTag[]): NbtTag => nbt.list(et, values);
-export const doubles = (...values: number[]): NbtTag => nbt.list(TAG.Double, values.map(nbt.double));
-export const bytes = (values: ArrayLike<number>): NbtTag => ({ t: 7, v: Int8Array.from(values as number[]) });
-export const longs = (values: bigint[]): NbtTag => ({ t: 12, v: BigInt64Array.from(values) });
+export const compound = (entries: Record<string, NbtTag> = {}): NbtTag =>
+  nbt.compound(new Map(Object.entries(entries)));
+export const ints = (...values: number[]): NbtTag => ({
+  t: 11,
+  v: Int32Array.from(values),
+});
+export const list = (et: number, ...values: NbtTag[]): NbtTag =>
+  nbt.list(et, values);
+export const doubles = (...values: number[]): NbtTag =>
+  nbt.list(TAG.Double, values.map(nbt.double));
+export const bytes = (values: ArrayLike<number>): NbtTag => ({
+  t: 7,
+  v: Int8Array.from(values as number[]),
+});
+export const longs = (values: bigint[]): NbtTag => ({
+  t: 12,
+  v: BigInt64Array.from(values),
+});
 
 export function encodeFile(root: NbtTag, rootName = "", gzip = true): Buffer {
   const encoder = new NbtEncoder();
@@ -43,16 +66,19 @@ export function packLitematic(values: number[], bits: number): bigint[] {
     const shift = BigInt(start & 63);
     out[word]! |= (BigInt(value) & mask) << shift;
     const overflow = Number(shift) + bits - 64;
-    if (overflow > 0) out[word + 1]! |= (BigInt(value) & mask) >> (BigInt(bits) - BigInt(overflow));
+    if (overflow > 0) {
+      out[word + 1]! |=
+        (BigInt(value) & mask) >> (BigInt(bits) - BigInt(overflow));
+    }
   });
   return out.map((value) => BigInt.asIntN(64, value));
 }
 
 export interface Workspace {
+  cleanup(): void;
   dir: string;
   outDir: string;
   write(name: string, data: Buffer): string;
-  cleanup(): void;
 }
 
 export function workspace(): Workspace {
@@ -75,7 +101,11 @@ export function workspace(): Workspace {
   };
 }
 
-export function convert(ws: Workspace, input: string, options: Partial<ConvertOptions> = {}): Promise<ConvertReport> {
+export function convert(
+  ws: Workspace,
+  input: string,
+  options: Partial<ConvertOptions> = {}
+): Promise<ConvertReport> {
   return convertFile({
     input,
     outputDir: ws.outDir,
@@ -86,13 +116,13 @@ export function convert(ws: Workspace, input: string, options: Partial<ConvertOp
 }
 
 export interface Schematic {
-  raw: Record<string, unknown>;
-  width: number;
+  at(x: number, y: number, z: number): [number, number];
+  entities: Record<string, unknown>[];
   height: number;
   length: number;
-  at(x: number, y: number, z: number): [number, number];
+  raw: Record<string, unknown>;
   tiles: Record<string, unknown>[];
-  entities: Record<string, unknown>[];
+  width: number;
 }
 
 // Reads a converted file with an independent gzip and NBT implementation, so a bug in the
@@ -122,4 +152,5 @@ export async function readSchematic(path: string): Promise<Schematic> {
   };
 }
 
-export const outputs = (ws: Workspace): string[] => readdirSync(ws.outDir).sort();
+export const outputs = (ws: Workspace): string[] =>
+  readdirSync(ws.outDir).sort();

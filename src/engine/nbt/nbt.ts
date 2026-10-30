@@ -3,19 +3,19 @@
 // only materialises the small values it is explicitly asked for.
 
 export const TAG = {
-  End: 0,
   Byte: 1,
-  Short: 2,
-  Int: 3,
-  Long: 4,
-  Float: 5,
-  Double: 6,
   ByteArray: 7,
-  String: 8,
-  List: 9,
   Compound: 10,
+  Double: 6,
+  End: 0,
+  Float: 5,
+  Int: 3,
   IntArray: 11,
+  List: 9,
+  Long: 4,
   LongArray: 12,
+  Short: 2,
+  String: 8,
 } as const;
 
 export type Compound = Map<string, NbtTag>;
@@ -32,22 +32,31 @@ export type NbtTag =
 
 export const nbt = {
   byte: (v: number): NbtTag => ({ t: 1, v }),
-  short: (v: number): NbtTag => ({ t: 2, v }),
-  int: (v: number): NbtTag => ({ t: 3, v }),
-  long: (v: bigint): NbtTag => ({ t: 4, v }),
-  float: (v: number): NbtTag => ({ t: 5, v }),
-  double: (v: number): NbtTag => ({ t: 6, v }),
-  string: (v: string): NbtTag => ({ t: 8, v }),
-  list: (et: number, v: NbtTag[]): NbtTag => ({ t: 9, et, v }),
   compound: (v: Compound = new Map()): NbtTag => ({ t: 10, v }),
+  double: (v: number): NbtTag => ({ t: 6, v }),
+  float: (v: number): NbtTag => ({ t: 5, v }),
+  int: (v: number): NbtTag => ({ t: 3, v }),
+  list: (et: number, v: NbtTag[]): NbtTag => ({ et, t: 9, v }),
+  long: (v: bigint): NbtTag => ({ t: 4, v }),
+  short: (v: number): NbtTag => ({ t: 2, v }),
+  string: (v: string): NbtTag => ({ t: 8, v }),
 };
 
-export const child = (c: Compound | undefined, key: string): NbtTag | undefined => c?.get(key);
+export const child = (
+  c: Compound | undefined,
+  key: string
+): NbtTag | undefined => c?.get(key);
 
 export function asNumber(tag: NbtTag | undefined): number | undefined {
-  if (!tag) return undefined;
-  if (tag.t === 1 || tag.t === 2 || tag.t === 3 || tag.t === 5 || tag.t === 6) return tag.v;
-  if (tag.t === 4) return Number(tag.v);
+  if (!tag) {
+    return undefined;
+  }
+  if (tag.t === 1 || tag.t === 2 || tag.t === 3 || tag.t === 5 || tag.t === 6) {
+    return tag.v;
+  }
+  if (tag.t === 4) {
+    return Number(tag.v);
+  }
   return undefined;
 }
 
@@ -61,11 +70,17 @@ export const asList = (tag: NbtTag | undefined): NbtTag[] | undefined =>
   tag?.t === 9 ? tag.v : undefined;
 
 // [x, y, z] from an int array or a list of numbers, the two shapes positions come in.
-export function asTriple(tag: NbtTag | undefined): [number, number, number] | undefined {
-  if (tag?.t === 11 && tag.v.length >= 3) return [tag.v[0]!, tag.v[1]!, tag.v[2]!];
+export function asTriple(
+  tag: NbtTag | undefined
+): [number, number, number] | undefined {
+  if (tag?.t === 11 && tag.v.length >= 3) {
+    return [tag.v[0]!, tag.v[1]!, tag.v[2]!];
+  }
   if (tag?.t === 9 && tag.v.length >= 3) {
     const [x, y, z] = tag.v.map((item) => asNumber(item));
-    if (x !== undefined && y !== undefined && z !== undefined) return [x, y, z];
+    if (x !== undefined && y !== undefined && z !== undefined) {
+      return [x, y, z];
+    }
   }
   return undefined;
 }
@@ -74,8 +89,18 @@ export function asTriple(tag: NbtTag | undefined): [number, number, number] | un
 const UNDERFLOW = new Error("nbt underflow");
 const MAX_DEPTH = 512;
 const MAX_BUFFERED = 512 * 1024 * 1024;
-const FIXED_SIZE: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 4, 6: 8 };
+const FIXED_SIZE: Record<number, number> = {
+  1: 1,
+  2: 2,
+  3: 4,
+  4: 8,
+  5: 4,
+  6: 8,
+};
 const textDecoder = new TextDecoder("utf-8");
+
+// Bytes per element of the three array tags.
+const ARRAY_UNIT: Record<number, number> = { 7: 1, 11: 4, 12: 8 };
 
 export class NbtError extends Error {}
 
@@ -88,7 +113,9 @@ export class NbtReader {
   constructor(private readonly source: AsyncIterator<Buffer>) {}
 
   private async pull(): Promise<boolean> {
-    if (this.done) return false;
+    if (this.done) {
+      return false;
+    }
     const next = await this.source.next();
     if (next.done) {
       this.done = true;
@@ -101,7 +128,9 @@ export class NbtReader {
       this.pos = 0;
       this.end = chunk.length;
     } else {
-      if (left + chunk.length > MAX_BUFFERED) throw new NbtError("NBT value is too large to read");
+      if (left + chunk.length > MAX_BUFFERED) {
+        throw new NbtError("NBT value is too large to read");
+      }
       const merged = Buffer.allocUnsafe(left + chunk.length);
       this.buf.copy(merged, 0, this.pos, this.end);
       chunk.copy(merged, left);
@@ -114,19 +143,18 @@ export class NbtReader {
 
   async ensure(n: number): Promise<void> {
     while (this.end - this.pos < n) {
-      if (!(await this.pull())) throw new NbtError("Unexpected end of file (is it truncated?)");
+      if (!(await this.pull())) {
+        throw new NbtError("Unexpected end of file (is it truncated?)");
+      }
     }
-  }
-
-  // Load more without a minimum, returning false at end of input.
-  async more(): Promise<boolean> {
-    return this.pull();
   }
 
   async skip(n: number): Promise<void> {
     let left = n;
     while (left > 0) {
-      if (this.end === this.pos) await this.ensure(1);
+      if (this.end === this.pos) {
+        await this.ensure(1);
+      }
       const take = Math.min(left, this.end - this.pos);
       this.pos += take;
       left -= take;
@@ -134,23 +162,31 @@ export class NbtReader {
   }
 
   async u8(): Promise<number> {
-    if (this.end === this.pos) await this.ensure(1);
+    if (this.end === this.pos) {
+      await this.ensure(1);
+    }
     return this.buf[this.pos++]!;
   }
 
   async i32(): Promise<number> {
-    if (this.end - this.pos < 4) await this.ensure(4);
+    if (this.end - this.pos < 4) {
+      await this.ensure(4);
+    }
     const value = this.buf.readInt32BE(this.pos);
     this.pos += 4;
     return value;
   }
 
   async name(): Promise<string> {
-    if (this.end - this.pos < 2) await this.ensure(2);
+    if (this.end - this.pos < 2) {
+      await this.ensure(2);
+    }
     const length = this.buf.readUInt16BE(this.pos);
     this.pos += 2;
     await this.ensure(length);
-    const text = textDecoder.decode(this.buf.subarray(this.pos, this.pos + length));
+    const text = textDecoder.decode(
+      this.buf.subarray(this.pos, this.pos + length)
+    );
     this.pos += length;
     return text;
   }
@@ -162,22 +198,34 @@ export class NbtReader {
       try {
         return this.decode(type, 0);
       } catch (error) {
-        if (error !== UNDERFLOW) throw error;
+        if (error !== UNDERFLOW) {
+          throw error;
+        }
         this.pos = start;
         // Double what's buffered before retrying so very large values stay linear.
         const target = (this.end - this.pos) * 2;
-        if (!(await this.pull())) throw new NbtError("Unexpected end of file (is it truncated?)");
-        while (this.end - this.pos < target && (await this.pull()));
+        if (!(await this.pull())) {
+          throw new NbtError("Unexpected end of file (is it truncated?)", {
+            cause: error,
+          });
+        }
+        while (this.end - this.pos < target && (await this.pull())) {
+          // Pulling is all there is to do until enough has arrived.
+        }
       }
     }
   }
 
   private need(n: number): void {
-    if (this.end - this.pos < n) throw UNDERFLOW;
+    if (this.end - this.pos < n) {
+      throw UNDERFLOW;
+    }
   }
 
   private decode(type: number, depth: number): NbtTag {
-    if (depth > MAX_DEPTH) throw new NbtError("NBT is nested too deeply");
+    if (depth > MAX_DEPTH) {
+      throw new NbtError("NBT is nested too deeply");
+    }
     const buf = this.buf;
     switch (type) {
       case 1: {
@@ -228,17 +276,23 @@ export class NbtReader {
         const et = buf[this.pos]!;
         const n = buf.readInt32BE(this.pos + 1);
         this.pos += 5;
-        if (n < 0) return { t: 9, et, v: [] };
+        if (n < 0) {
+          return { et, t: 9, v: [] };
+        }
         const v: NbtTag[] = [];
-        for (let i = 0; i < n; i++) v.push(this.decode(et, depth + 1));
-        return { t: 9, et, v };
+        for (let i = 0; i < n; i++) {
+          v.push(this.decode(et, depth + 1));
+        }
+        return { et, t: 9, v };
       }
       case 10: {
         const v: Compound = new Map();
         for (;;) {
           this.need(1);
           const inner = buf[this.pos++]!;
-          if (inner === 0) return { t: 10, v };
+          if (inner === 0) {
+            return { t: 10, v };
+          }
           const key = this.decodeString();
           v.set(key, this.decode(inner, depth + 1));
         }
@@ -246,14 +300,18 @@ export class NbtReader {
       case 11: {
         const n = this.arrayLength(4);
         const v = new Int32Array(n);
-        for (let i = 0; i < n; i++) v[i] = buf.readInt32BE(this.pos + i * 4);
+        for (let i = 0; i < n; i++) {
+          v[i] = buf.readInt32BE(this.pos + i * 4);
+        }
         this.pos += n * 4;
         return { t: 11, v };
       }
       case 12: {
         const n = this.arrayLength(8);
         const v = new BigInt64Array(n);
-        for (let i = 0; i < n; i++) v[i] = buf.readBigInt64BE(this.pos + i * 8);
+        for (let i = 0; i < n; i++) {
+          v[i] = buf.readBigInt64BE(this.pos + i * 8);
+        }
         this.pos += n * 8;
         return { t: 12, v };
       }
@@ -265,7 +323,9 @@ export class NbtReader {
   private arrayLength(unit: number): number {
     this.need(4);
     const n = this.buf.readInt32BE(this.pos);
-    if (n < 0) throw new NbtError("Corrupt NBT: negative array length");
+    if (n < 0) {
+      throw new NbtError("Corrupt NBT: negative array length");
+    }
     this.need(4 + n * unit);
     this.pos += 4;
     return n;
@@ -288,14 +348,18 @@ export class NbtReader {
       this.skipSync(type, depth);
       return true;
     } catch (error) {
-      if (error !== UNDERFLOW) throw error;
+      if (error !== UNDERFLOW) {
+        throw error;
+      }
       this.pos = start;
       return false;
     }
   }
 
   private skipSync(type: number, depth: number): void {
-    if (depth > MAX_DEPTH) throw new NbtError("NBT is nested too deeply");
+    if (depth > MAX_DEPTH) {
+      throw new NbtError("NBT is nested too deeply");
+    }
     const fixed = FIXED_SIZE[type];
     if (fixed !== undefined) {
       this.need(fixed);
@@ -307,10 +371,12 @@ export class NbtReader {
       case 7:
       case 11:
       case 12: {
-        const unit = type === 7 ? 1 : type === 11 ? 4 : 8;
+        const unit = ARRAY_UNIT[type]!;
         this.need(4);
         const n = buf.readInt32BE(this.pos);
-        if (n < 0) throw new NbtError("Corrupt NBT: negative array length");
+        if (n < 0) {
+          throw new NbtError("Corrupt NBT: negative array length");
+        }
         this.need(4 + n * unit);
         this.pos += 4 + n * unit;
         return;
@@ -335,14 +401,18 @@ export class NbtReader {
           }
           return;
         }
-        for (let i = 0; i < n; i++) this.skipSync(et, depth + 1);
+        for (let i = 0; i < n; i++) {
+          this.skipSync(et, depth + 1);
+        }
         return;
       }
       case 10: {
         for (;;) {
           this.need(1);
           const inner = buf[this.pos++]!;
-          if (inner === 0) return;
+          if (inner === 0) {
+            return;
+          }
           this.need(2);
           const n = buf.readUInt16BE(this.pos);
           this.need(2 + n);
@@ -357,17 +427,25 @@ export class NbtReader {
 
   // Skips any value in constant memory, even a multi-gigabyte array.
   async skipValue(type: number, depth = 0): Promise<void> {
-    if (this.skipBuffered(type, depth)) return;
-    if (depth > MAX_DEPTH) throw new NbtError("NBT is nested too deeply");
+    if (this.skipBuffered(type, depth)) {
+      return;
+    }
+    if (depth > MAX_DEPTH) {
+      throw new NbtError("NBT is nested too deeply");
+    }
     const fixed = FIXED_SIZE[type];
-    if (fixed !== undefined) return this.skip(fixed);
+    if (fixed !== undefined) {
+      return this.skip(fixed);
+    }
     switch (type) {
       case 7:
       case 11:
       case 12: {
         const n = await this.i32();
-        if (n < 0) throw new NbtError("Corrupt NBT: negative array length");
-        return this.skip(n * (type === 7 ? 1 : type === 11 ? 4 : 8));
+        if (n < 0) {
+          throw new NbtError("Corrupt NBT: negative array length");
+        }
+        return this.skip(n * ARRAY_UNIT[type]!);
       }
       case 8: {
         await this.ensure(2);
@@ -379,14 +457,20 @@ export class NbtReader {
         const et = await this.u8();
         const n = await this.i32();
         const size = FIXED_SIZE[et];
-        if (size !== undefined) return this.skip(Math.max(n, 0) * size);
-        for (let i = 0; i < n; i++) await this.skipValue(et, depth + 1);
+        if (size !== undefined) {
+          return this.skip(Math.max(n, 0) * size);
+        }
+        for (let i = 0; i < n; i++) {
+          await this.skipValue(et, depth + 1);
+        }
         return;
       }
       case 10: {
         for (;;) {
           const inner = await this.u8();
-          if (inner === 0) return;
+          if (inner === 0) {
+            return;
+          }
           await this.ensure(2);
           const n = this.buf.readUInt16BE(this.pos);
           this.pos += 2;
@@ -406,9 +490,15 @@ export type WalkAction =
   | { kind: "enter" } // Compound: visit children.
   | { kind: "stop" } // Abandon the walk entirely.
   | { kind: "value"; use: (tag: NbtTag) => void | Promise<void> }
-  | { kind: "each"; use: (element: NbtTag, count: number) => void | Promise<void> } // List
+  | {
+      kind: "each";
+      use: (element: NbtTag, count: number) => void | Promise<void>;
+    } // List
   // Arrays: the callback must consume exactly `length` elements from the reader.
-  | { kind: "array"; use: (reader: NbtReader, length: number) => Promise<void> };
+  | {
+      kind: "array";
+      use: (reader: NbtReader, length: number) => Promise<void>;
+    };
 
 export const SKIP: WalkAction = { kind: "skip" };
 export const ENTER: WalkAction = { kind: "enter" };
@@ -419,14 +509,23 @@ export type WalkHandler = (path: string, type: number) => WalkAction;
 class WalkStopped extends Error {}
 
 // Walks a named root tag. Paths look like "/Blocks/Palette"; the root name is dropped.
-export async function walk(reader: NbtReader, handler: WalkHandler): Promise<void> {
+export async function walk(
+  reader: NbtReader,
+  handler: WalkHandler
+): Promise<void> {
   const rootType = await reader.u8();
-  if (rootType !== TAG.Compound) throw new NbtError("This isn't a Minecraft schematic: it doesn't contain NBT data.");
+  if (rootType !== TAG.Compound) {
+    throw new NbtError(
+      "This isn't a Minecraft schematic: it doesn't contain NBT data."
+    );
+  }
   await reader.name();
   try {
     await walkCompound(reader, "", handler, 0);
   } catch (error) {
-    if (!(error instanceof WalkStopped)) throw error;
+    if (!(error instanceof WalkStopped)) {
+      throw error;
+    }
   }
 }
 
@@ -434,13 +533,19 @@ async function walkCompound(
   reader: NbtReader,
   path: string,
   handler: WalkHandler,
-  depth: number,
+  depth: number
 ): Promise<void> {
-  if (depth > MAX_DEPTH) throw new NbtError("NBT is nested too deeply");
+  if (depth > MAX_DEPTH) {
+    throw new NbtError("NBT is nested too deeply");
+  }
   for (;;) {
     const type = await reader.u8();
-    if (type === 0) return;
-    if (type > 12) throw new NbtError(`Corrupt NBT: unknown tag type ${type}`);
+    if (type === 0) {
+      return;
+    }
+    if (type > 12) {
+      throw new NbtError(`Corrupt NBT: unknown tag type ${type}`);
+    }
     const childPath = `${path}/${await reader.name()}`;
     const action = handler(childPath, type);
     switch (action.kind) {
@@ -448,8 +553,11 @@ async function walkCompound(
         await reader.skipValue(type);
         break;
       case "enter":
-        if (type === TAG.Compound) await walkCompound(reader, childPath, handler, depth + 1);
-        else await reader.skipValue(type);
+        if (type === TAG.Compound) {
+          await walkCompound(reader, childPath, handler, depth + 1);
+        } else {
+          await reader.skipValue(type);
+        }
         break;
       case "stop":
         throw new WalkStopped();
@@ -470,12 +578,18 @@ async function walkCompound(
         break;
       }
       case "array": {
-        if (type !== TAG.ByteArray && type !== TAG.IntArray && type !== TAG.LongArray) {
+        if (
+          type !== TAG.ByteArray &&
+          type !== TAG.IntArray &&
+          type !== TAG.LongArray
+        ) {
           await reader.skipValue(type);
           break;
         }
         const length = await reader.i32();
-        if (length < 0) throw new NbtError("Corrupt NBT: negative array length");
+        if (length < 0) {
+          throw new NbtError("Corrupt NBT: negative array length");
+        }
         await action.use(reader, length);
         break;
       }
@@ -493,9 +607,13 @@ export class NbtEncoder {
   }
 
   private reserve(n: number): void {
-    if (this.length + n <= this.buf.length) return;
+    if (this.length + n <= this.buf.length) {
+      return;
+    }
     let capacity = this.buf.length * 2;
-    while (capacity < this.length + n) capacity *= 2;
+    while (capacity < this.length + n) {
+      capacity *= 2;
+    }
     const next = Buffer.allocUnsafe(capacity);
     this.buf.copy(next, 0, 0, this.length);
     this.buf = next;
@@ -528,7 +646,7 @@ export class NbtEncoder {
 
   str(v: string): void {
     const encoded = Buffer.from(v, "utf8");
-    const n = Math.min(encoded.length, 65535);
+    const n = Math.min(encoded.length, 65_535);
     this.reserve(2 + n);
     this.buf.writeUInt16BE(n, this.length);
     this.length += 2;
@@ -576,7 +694,10 @@ export class NbtEncoder {
       case 7:
         this.i32(tag.v.length);
         this.reserve(tag.v.length);
-        this.buf.set(new Uint8Array(tag.v.buffer, tag.v.byteOffset, tag.v.length), this.length);
+        this.buf.set(
+          new Uint8Array(tag.v.buffer, tag.v.byteOffset, tag.v.length),
+          this.length
+        );
         this.length += tag.v.length;
         break;
       case 8:
@@ -585,10 +706,14 @@ export class NbtEncoder {
       case 9:
         this.u8(tag.v.length === 0 && tag.et === 0 ? TAG.Compound : tag.et);
         this.i32(tag.v.length);
-        for (const item of tag.v) this.payload(item);
+        for (const item of tag.v) {
+          this.payload(item);
+        }
         break;
       case 10:
-        for (const [key, value] of tag.v) this.named(key, value);
+        for (const [key, value] of tag.v) {
+          this.named(key, value);
+        }
         this.u8(0);
         break;
       case 11:

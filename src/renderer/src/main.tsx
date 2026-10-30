@@ -5,8 +5,8 @@ import "./index.css";
 
 document.documentElement.toggleAttribute("data-glass", window.api.glass);
 
-createRoot(document.getElementById("root")!).render(
+createRoot(document.querySelector("#root")!).render(
   <StrictMode>
     <App />
-  </StrictMode>,
+  </StrictMode>
 );
